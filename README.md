@@ -9,6 +9,8 @@ Facilitates all in-game chat. It provides a global chat during the voting phase 
 
 ## API Reference
 
+All request and response bodies are in **JSON** format.
+
 ### Send Global Message
 
 **Endpoint:** `POST /api/chat/global/{lobbyId}/send-message`
