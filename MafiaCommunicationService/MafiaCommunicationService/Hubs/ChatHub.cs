@@ -25,7 +25,7 @@ public class ChatHub(IChatService chatService) : Hub
         };
         await chatService.SaveMessageAsync(entity);
 
-        var response = new ChatResponse { SenderId = entity.SenderId, SenderName = entity.SenderName, Content = entity.Content, Timestamp = entity.Timestamp };
+        var response = new ChatResponse { LobbyId = lobbyId, SenderId = entity.SenderId, SenderName = entity.SenderName, Content = entity.Content, Timestamp = entity.Timestamp };
         await Clients.Group($"global_{lobbyId}").SendAsync("ReceiveGlobalMessage", response);
     }
 
@@ -46,7 +46,7 @@ public class ChatHub(IChatService chatService) : Hub
         };
         await chatService.SaveMessageAsync(entity);
         
-        var response = new PrivateChatResponse { ChannelName = channelName, SenderId = entity.SenderId, SenderName = entity.SenderName, Content = entity.Content, Timestamp = entity.Timestamp };
+        var response = new PrivateChatResponse { LobbyId = lobbyId, ChannelName = channelName, SenderId = entity.SenderId, SenderName = entity.SenderName, Content = entity.Content, Timestamp = entity.Timestamp };
         await Clients.Group($"private_{channelName}_{lobbyId}").SendAsync("ReceivePrivateMessage", response);
     }
 

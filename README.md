@@ -26,10 +26,11 @@ All request and response bodies are in **JSON** format.
 **Success Response (200):**
 ```json
 {
+  "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
   "senderId": 123,
-  "senderName": "PlayerOne",
-  "content": "Hello everyone!",
-  "timestamp": "2025-09-10T14:30:45.123Z"
+  "senderName": "TestUser",
+  "content": "Hello, world!",
+  "timestamp": "2025-09-09T20:30:00.123Z"
 }
 ```
 
@@ -93,10 +94,12 @@ All request and response bodies are in **JSON** format.
 **Success Response (200):**
 ```json
 {
-  "senderId": 456,
-  "senderName": "MafiaPlayer",
-  "content": "We should eliminate PlayerOne tonight",
-  "timestamp": "2025-09-10T14:32:15.789Z"
+  "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
+  "channelName": "detectives",
+  "senderId": 123,
+  "senderName": "TestUser",
+  "content": "Hello, world!",
+  "timestamp": "2025-09-09T20:30:00.123Z"
 }
 ```
 
@@ -188,9 +191,122 @@ All request and response bodies are in **JSON** format.
 }
 ```
 
+
+---
+
+### Get Global Chat History
+
+**Endpoint:** `GET /api/chat/global/{lobbyId}/history`
+
+**Description:** Retrieves the history of messages in the global chat for the specified lobby.
+
+**URL Parameters:**
+
+* `lobbyId` *(string)* – Unique lobby identifier.
+
+**Success Response (200):**
+
+```json
+[
+  {
+    "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
+    "senderId": 123,
+    "senderName": "TestUser",
+    "content": "Hello, world!",
+    "timestamp": "2025-09-09T20:30:00.123Z"
+  },
+  {
+    "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
+    "senderId": 456,
+    "senderName": "AnotherUser",
+    "content": "Welcome!",
+    "timestamp": "2025-09-09T20:31:10.456Z"
+  }
+]
+```
+
+**Error Responses:**
+
+**404 Not Found**
+
+```json
+{
+  "error": {
+    "code": "LOBBY_NOT_FOUND",
+    "message": "Lobby does not exist"
+  }
+}
+```
+
+---
+
+### Get Private Chat History
+
+**Endpoint:** `GET /api/chat/private/{lobbyId}/{channelName}/history?userId={userId}`
+
+**Description:** Retrieves the message history of a private chat channel for the specified user.
+
+**URL Parameters:**
+
+* `lobbyId` *(string)* – Lobby identifier.
+* `channelName` *(string)* – Private channel name.
+* `userId` *(long, query)* – The requesting user's ID (used for access validation).
+
+**Success Response (200):**
+
+```json
+[
+  {
+    "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
+    "channelName": "detectives",
+    "senderId": 123,
+    "senderName": "TestUser",
+    "content": "We should meet tonight.",
+    "timestamp": "2025-09-09T20:30:00.123Z"
+  },
+  {
+    "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
+    "channelName": "detectives",
+    "senderId": 456,
+    "senderName": "AnotherUser",
+    "content": "Agreed.",
+    "timestamp": "2025-09-09T20:32:20.789Z"
+  }
+]
+```
+
+**Error Responses:**
+
+**403 Forbidden**
+
+```json
+{
+  "error": {
+    "code": "ACCESS_DENIED",
+    "message": "You do not have access to this private channel's history"
+  }
+}
+```
+
+**404 Not Found**
+
+```json
+{
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Lobby or channel does not exist"
+  }
+}
+```
+
+
 ---
 
 ## SignalR Hub Reference
+
+**Endpoint**: `WS /chathub`
+
+**Description**: Provides real-time communication between clients and the server.
 
 ### Server Methods (Client → Server)
 
@@ -238,8 +354,33 @@ All request and response bodies are in **JSON** format.
 
 ### ChatResponse Model
 
+| Field       | Type     | Description               |
+|-------------|----------|---------------------------|
+| `lobbyId`   | string   | Lobby identifier          |
+| `senderId`  | long     | ID of the sender          |
+| `senderName`| string   | Name of the sender        |
+| `content`   | string   | Message content           |
+| `timestamp` | DateTime | UTC timestamp from server |
+
+**Example:**
+```json
+{
+  "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
+  "senderId": 123,
+  "senderName": "TestUser",
+  "content": "Hello, world!",
+  "timestamp": "2025-09-09T20:30:00.123Z"
+}
+```
+
+---
+
+### PrivateChatResponse Model
+
 | Field       | Type     | Description |
 |-------------|----------|-------------|
+| `channelName` | string | Name of the channel |
+| `lobbyId`   | string   | Lobby identifier |
 | `senderId`  | long     | ID of the sender |
 | `senderName`| string   | Name of the sender |
 | `content`   | string   | Message content |
@@ -248,6 +389,8 @@ All request and response bodies are in **JSON** format.
 **Example:**
 ```json
 {
+  "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
+  "channelName": "detectives",
   "senderId": 123,
   "senderName": "TestUser",
   "content": "Hello, world!",
