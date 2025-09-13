@@ -1,0 +1,53 @@
+﻿# ===================================================================
+# Docker Compose file for the Mafia Communication Service
+# -------------------------------------------------------------------
+# This file defines and orchestrates the application service and its
+# PostgreSQL database dependency.
+#
+# To run: docker-compose up --build
+# To stop: docker-compose down
+# ===================================================================
+
+services:
+  # The .NET Application Service
+  mafiacommunicationservice:
+    image: mafiacommunicationservice
+    build:
+      context: .
+      dockerfile: MafiaCommunicationService/Dockerfile
+    container_name: mafia-comm-service-app
+    ports:
+      - "8080:8080" # Expose the app's port to the host machine
+    env_file:
+      - .env # Load environment variables from the .env file
+    depends_on:
+      db:
+        condition: service_healthy # Wait for the DB to be ready
+    networks:
+      - mafia-comm-service-net
+
+  # The PostgreSQL Database Service
+  db:
+    image: postgres:16
+    container_name: mafia-comm-service-db
+    env_file:
+      - .env # Load database credentials from the .env file
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # Persist database data
+    networks:
+      - mafia-comm-service-net
+    # Health Check to ensure the database server is ready before the app starts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+# Define the network for services to communicate on
+networks:
+  mafia-comm-service-net:
+    driver: bridge
+
+# Define the volume for persistent database storage
+volumes:
+  postgres_data:
