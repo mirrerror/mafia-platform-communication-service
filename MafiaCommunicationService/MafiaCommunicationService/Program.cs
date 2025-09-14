@@ -1,8 +1,11 @@
+using DotNetEnv;
 using MafiaCommunicationService.Data;
 using MafiaCommunicationService.Hubs;
 using MafiaCommunicationService.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+
+Env.Load(options: LoadOptions.TraversePath());
 
 var builder = WebApplication.CreateBuilder(args);
 

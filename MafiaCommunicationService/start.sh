@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # ==============================================================================
-# Launch Script for Mafia Communication Service
+# Launch Script for Mafia Communication Service (Linux/macOS)
 # ------------------------------------------------------------------------------
-# This script builds and runs the .NET application.
-# It should be executed from the root directory of the project.
+# This script builds and runs the .NET application. The application itself
+# will load configuration from the .env file in the root directory.
 # ==============================================================================
 
 # Exit immediately if any command fails
@@ -12,6 +12,9 @@ set -e
 
 # Define the relative path to your main project directory
 PROJECT_DIR="MafiaCommunicationService"
+DLL_NAME="MafiaCommunicationService.dll"
+# This path assumes a Debug build. Change 'Debug' to 'Release' for production builds.
+DLL_PATH="bin/Debug/net9.0/$DLL_NAME" 
 
 # Check if the project directory exists
 if [ ! -d "$PROJECT_DIR" ]; then
@@ -20,12 +23,16 @@ if [ ! -d "$PROJECT_DIR" ]; then
   exit 1
 fi
 
-# Print a message to the console
-echo "Launching Mafia Communication Service..."
+echo "Building Mafia Communication Service..."
+# Navigate into the project directory and build the application
+(cd "$PROJECT_DIR" && dotnet build)
 
-# Navigate into the project directory, run the app, and then navigate back.
-# The 'dotnet run' command will automatically restore, build, and run the project.
-# All arguments passed to this script (e.g., --urls) are forwarded to 'dotnet run'.
-(cd "$PROJECT_DIR" && dotnet run "$@")
+echo "Build complete."
+echo "Running Mafia Communication Service..."
+
+# Navigate into the project directory and run the built DLL
+# The application will automatically find and load the .env file.
+# All arguments passed to this script are forwarded to the application.
+(cd "$PROJECT_DIR" && dotnet "$DLL_PATH" "$@")
 
 echo "Application has been shut down."
