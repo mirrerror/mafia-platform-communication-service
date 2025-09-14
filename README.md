@@ -4,8 +4,118 @@
 
 Facilitates all in-game chat. It provides a global chat during the voting phase and private, secure chat channels for specific groups (e.g., Mafia members, players in the same location).
 
+---
+
 ## Technology Stack
 С# (ASP .NET Core, SignalR), PostgreSQL as the database, Websockets for the communcation.
+
+---
+
+## Prerequisites
+Before you begin, ensure you have the following installed on your machine:
+
+- Git  
+- .NET 9.0 SDK  
+- Docker Desktop  
+
+---
+
+## Getting Started
+
+### 1. Clone the Repository
+Clone the project to your local machine:
+
+```bash
+git clone https://github.com/mirrerror/mafia-platform-communication-service.git
+cd mafia-platform-communication-service
+````
+
+---
+
+### 2. Configure Environment Variables
+
+This project uses a `.env` file in the root directory to manage sensitive information like database connection strings.
+
+1. Find the `.env.example` file in the root of the project, make a copy, and rename it to `.env`.
+2. Open `.env` and configure it.
+
+**Important Note on Host:**
+
+* When running with Docker Compose → `Host=db`
+* When running locally → `Host=localhost`
+
+---
+
+## How to Run the Service
+
+### Option 1: Using Docker Compose (Recommended)
+
+This method runs both the .NET service and PostgreSQL inside containers.
+
+1. Ensure Docker Desktop is running.
+2. Update `.env` so the connection string uses `Host=db`:
+
+```env
+ConnectionStrings__DefaultConnection="Host=db;Database=mafia_chat;..."
+```
+
+3. Build and run:
+
+```bash
+docker-compose up --build
+```
+
+The service will be available at [http://localhost:8080](http://localhost:8080).
+
+* Stop: press **Ctrl + C**
+* Stop & remove containers:
+
+```bash
+docker-compose down
+```
+
+---
+
+### Option 2: Running Locally (Without Docker)
+
+Useful for debugging in your IDE.
+
+1. Ensure you have a local PostgreSQL instance running.
+2. Update `.env` so the connection string uses `Host=localhost`:
+
+```env
+ConnectionStrings__DefaultConnection="Host=localhost;Database=mafia_chat;..."
+```
+
+3. Run the application:
+
+* On **Windows**:
+
+  ```bash
+  start.bat
+  ```
+* On **Linux/macOS**:
+
+  ```bash
+  ./start.sh
+  ```
+* Or directly:
+
+  ```bash
+  dotnet run
+  ```
+
+---
+
+## Running the Tests
+
+From the solution root, run:
+
+```bash
+dotnet test
+```
+
+---
 
 ## API Reference
 
