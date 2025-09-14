@@ -8,22 +8,24 @@ public class ChatMessageEntity
     public Guid Id { get; set; }
 
     [Required]
-    public string LobbyId { get; set; }
+    [StringLength(50)]
+    public required string LobbyId { get; set; }
 
     // Null for global messages
+    [StringLength(50)]
     public string? ChannelName { get; set; }
 
     [Required]
-    public long SenderId { get; set; }
+    public required long SenderId { get; set; }
     
     [Required]
     [StringLength(50)]
-    public string SenderName { get; set; }
+    public required string SenderName { get; set; }
 
     [Required]
     [StringLength(200)]
-    public string Content { get; set; }
+    public required string Content { get; set; }
 
     [Required]
-    public DateTime Timestamp { get; set; }
+    public required DateTime Timestamp { get; set; }
 }

@@ -31,7 +31,7 @@ public class ChatControllerTests
     public async Task GetGlobalChatHistory_WhenLobbyExists_ReturnsOkWithHistory()
     {
         const string lobbyId = "existing-lobby";
-        var history = new List<ChatMessageEntity> { new() { Content = "test" } };
+        var history = new List<ChatMessageEntity> { new() { LobbyId = lobbyId, SenderId = 101, SenderName = "test-user", Content = "test", Timestamp = DateTime.UtcNow } };
         _mockChatService.Setup(s => s.LobbyExistsAsync(lobbyId)).ReturnsAsync(true);
         _mockChatService.Setup(s => s.GetMessageHistoryAsync(lobbyId, null, 50)).ReturnsAsync(history);
 

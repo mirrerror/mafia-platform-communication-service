@@ -4,6 +4,6 @@ namespace MafiaCommunicationService.Models;
 
 public class PrivateChannel
 {
-    public string Name { get; set; }
+    public required string Name { get; set; }
     public ConcurrentDictionary<long, bool> Members { get; } = new();
 }
