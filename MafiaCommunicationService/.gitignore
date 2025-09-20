@@ -404,6 +404,9 @@ FodyWeavers.xsd
 *.sln.iml
 .idea/
 
+# Unit test result files
+coveragereport
+
 ##
 ## Visual studio for Mac
 ##

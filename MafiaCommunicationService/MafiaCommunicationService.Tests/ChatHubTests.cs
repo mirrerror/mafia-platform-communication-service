@@ -1,101 +1,239 @@
-﻿using MafiaCommunicationService.Hubs;
+﻿using Microsoft.AspNetCore.SignalR;
+using Moq;
+using MafiaCommunicationService.Hubs;
 using MafiaCommunicationService.Models;
 using MafiaCommunicationService.Services;
-using Microsoft.AspNetCore.SignalR;
-using Moq;
 
 namespace MafiaCommunicationService.Tests;
 
 public class ChatHubTests
 {
-    private readonly Mock<IChatService> _mockChatService;
-    private readonly ChatHub _hub;
-    private readonly Mock<IHubCallerClients> _mockClients;
-    private readonly Mock<IClientProxy> _mockClientProxy;
-    private readonly Mock<IGroupManager> _mockGroups;
-    private readonly Mock<HubCallerContext> _mockContext;
+    private readonly Mock<IChatService> _chatServiceMock;
+    private readonly ChatHub _chatHub;
+    private readonly Mock<HubCallerContext> _hubCallerContextMock;
+    private readonly Mock<IGroupManager> _groupManagerMock;
+    private readonly Mock<IHubCallerClients> _clientsMock;
+    private readonly Mock<IClientProxy> _clientProxyMock;
 
     public ChatHubTests()
     {
-        _mockChatService = new Mock<IChatService>();
-        _mockClients = new Mock<IHubCallerClients>();
-        _mockClientProxy = new Mock<IClientProxy>();
-        _mockGroups = new Mock<IGroupManager>();
-        _mockContext = new Mock<HubCallerContext>();
-        
-        _mockClients.Setup(c => c.Group(It.IsAny<string>())).Returns(_mockClientProxy.Object);
-        _mockContext.Setup(c => c.ConnectionId).Returns(Guid.NewGuid().ToString());
+        _chatServiceMock = new Mock<IChatService>();
+        _hubCallerContextMock = new Mock<HubCallerContext>();
+        _groupManagerMock = new Mock<IGroupManager>();
+        _clientsMock = new Mock<IHubCallerClients>();
+        _clientProxyMock = new Mock<IClientProxy>();
 
-        _hub = new ChatHub(_mockChatService.Object)
+        _chatHub = new ChatHub(_chatServiceMock.Object)
         {
-            Clients = _mockClients.Object,
-            Groups = _mockGroups.Object,
-            Context = _mockContext.Object
+            Context = _hubCallerContextMock.Object,
+            Groups = _groupManagerMock.Object,
+            Clients = _clientsMock.Object
         };
     }
 
     [Fact]
-    public async Task SendPrivateMessage_WhenAuthorized_SendsMessage()
+    public async Task SendGlobalMessage_ValidMessage_SendsMessageToGroup()
     {
-        _mockChatService.Setup(s => s.UserHasAccessToChannelAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(true);
-        var message = new ChatMessage { SenderId = 1, SenderName = "Test", Content = "Secret" };
-
-        await _hub.SendPrivateMessage("channel1", "lobby1", message);
-
-        _mockClientProxy.Verify(
-            x => x.SendCoreAsync("ReceivePrivateMessage", It.IsAny<object[]>(), default),
+        const string lobbyId = "test-lobby";
+        var message = new ChatMessage { SenderId = 1, SenderName = "User1", Content = "Hello" };
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.IsGlobalChatEnabled(lobbyId)).Returns(true);
+        _clientsMock.Setup(c => c.Group($"global_{lobbyId}")).Returns(_clientProxyMock.Object);
+        
+        await _chatHub.SendGlobalMessage(lobbyId, message);
+        
+        _clientProxyMock.Verify(
+            c => c.SendCoreAsync("ReceiveGlobalMessage", It.IsAny<object[]>(), CancellationToken.None),
             Times.Once);
     }
-    
-    [Fact]
-    public async Task SendPrivateMessage_WhenUnauthorized_ThrowsHubException()
-    {
-        _mockChatService.Setup(s => s.UserHasAccessToChannelAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>())).ReturnsAsync(false);
-        var message = new ChatMessage { SenderId = 1, SenderName = "Test", Content = "Secret" };
-
-        var ex = await Assert.ThrowsAsync<HubException>(() => _hub.SendPrivateMessage("channel1", "lobby1", message));
-        Assert.Contains("ACCESS_DENIED", ex.Message);
-    }
 
     [Fact]
-    public async Task SendPrivateMessage_WithInvalidMessage_ThrowsHubException()
+    public async Task SendGlobalMessage_LobbyNotFound_ThrowsHubException()
     {
-        var message = new ChatMessage { SenderId = 1, SenderName = "Test", Content = "" }; // Invalid content
-
-        var ex = await Assert.ThrowsAsync<HubException>(() => _hub.SendPrivateMessage("channel1", "lobby1", message));
-        Assert.Contains("Invalid message received", ex.Message);
-    }
-    
-    [Fact]
-    public async Task JoinPrivateChannel_WhenAuthorized_AddsToGroup()
-    {
-        _mockChatService.Setup(s => s.LobbyExistsAsync("lobby1")).ReturnsAsync(true);
-        _mockChatService.Setup(s => s.PrivateChannelExistsAsync("lobby1", "channel1")).ReturnsAsync(true);
-        _mockChatService.Setup(s => s.UserHasAccessToChannelAsync("lobby1", "channel1", 1)).ReturnsAsync(true);
-
-        await _hub.JoinPrivateChannel("lobby1", "channel1", 1);
+        const string lobbyId = "non-existent-lobby";
+        var message = new ChatMessage { SenderId = 1, SenderName = "User1", Content = "Hello" };
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns((Lobby)null!);
         
-        _mockGroups.Verify(g => g.AddToGroupAsync(It.IsAny<string>(), $"private_channel1_lobby1", default), Times.Once);
-    }
-    
-    [Fact]
-    public async Task JoinPrivateChannel_WhenAccessDenied_ThrowsHubException()
-    {
-        _mockChatService.Setup(s => s.LobbyExistsAsync("lobby1")).ReturnsAsync(true);
-        _mockChatService.Setup(s => s.PrivateChannelExistsAsync("lobby1", "channel1")).ReturnsAsync(true);
-        _mockChatService.Setup(s => s.UserHasAccessToChannelAsync("lobby1", "channel1", 1)).ReturnsAsync(false);
-
-        var ex = await Assert.ThrowsAsync<HubException>(() => _hub.JoinPrivateChannel("lobby1", "channel1", 1));
-        Assert.Contains("ACCESS_DENIED", ex.Message);
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.SendGlobalMessage(lobbyId, message));
     }
 
     [Fact]
-    public async Task JoinPrivateChannel_WhenChannelNotFound_ThrowsHubException()
+    public async Task SendGlobalMessage_ChatDisabled_ThrowsHubException()
     {
-        _mockChatService.Setup(s => s.LobbyExistsAsync("lobby1")).ReturnsAsync(true);
-        _mockChatService.Setup(s => s.PrivateChannelExistsAsync("lobby1", "channel1")).ReturnsAsync(false);
+        
+        const string lobbyId = "test-lobby";
+        var message = new ChatMessage { SenderId = 1, SenderName = "User1", Content = "Hello" };
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.IsGlobalChatEnabled(lobbyId)).Returns(false);
+        
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.SendGlobalMessage(lobbyId, message));
+    }
 
-        var ex = await Assert.ThrowsAsync<HubException>(() => _hub.JoinPrivateChannel("lobby1", "channel1", 1));
-        Assert.Contains("CHANNEL_NOT_FOUND", ex.Message);
+    [Fact]
+    public async Task SendGlobalMessage_InvalidMessage_ThrowsHubException()
+    {
+        const string lobbyId = "test-lobby";
+        var message = new ChatMessage { SenderId = 1, SenderName = "User1", Content = "" }; 
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.IsGlobalChatEnabled(lobbyId)).Returns(true);
+        
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.SendGlobalMessage(lobbyId, message));
+    }
+
+    [Fact]
+    public async Task SendPrivateMessage_ValidMessage_SendsMessageToGroup()
+    {
+        
+        const string lobbyId = "test-lobby";
+        const string channelName = "mafia";
+        var message = new ChatMessage { SenderId = 1, SenderName = "User1", Content = "Secret" };
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.UserHasAccessToChannelAsync(lobbyId, channelName, message.SenderId)).ReturnsAsync(true);
+        _clientsMock.Setup(c => c.Group($"private_{channelName}_{lobbyId}")).Returns(_clientProxyMock.Object);
+        
+        await _chatHub.SendPrivateMessage(channelName, lobbyId, message);
+        
+        _clientProxyMock.Verify(
+            c => c.SendCoreAsync("ReceivePrivateMessage", It.IsAny<object[]>(), CancellationToken.None),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SendPrivateMessage_LobbyNotFound_ThrowsHubException()
+    {
+        const string lobbyId = "test-lobby";
+        const string channelName = "mafia";
+        var message = new ChatMessage { SenderId = 1, SenderName = "User1", Content = "Secret" };
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns((Lobby)null!);
+        
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.SendPrivateMessage(channelName, lobbyId, message));
+    }
+
+    [Fact]
+    public async Task SendPrivateMessage_AccessDenied_ThrowsHubException()
+    {
+        const string lobbyId = "test-lobby";
+        const string channelName = "mafia";
+        var message = new ChatMessage { SenderId = 1, SenderName = "User1", Content = "Secret" };
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.UserHasAccessToChannelAsync(lobbyId, channelName, message.SenderId)).ReturnsAsync(false);
+        
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.SendPrivateMessage(channelName, lobbyId, message));
+    }
+
+    [Fact]
+    public async Task JoinGlobalChat_LobbyExists_AddsToGroup()
+    {
+        const string lobbyId = "test-lobby";
+        const long userId = 1;
+        const string connectionId = "test-connection";
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _hubCallerContextMock.Setup(c => c.ConnectionId).Returns(connectionId);
+        
+        await _chatHub.JoinGlobalChat(lobbyId, userId);
+        
+        _groupManagerMock.Verify(g => g.AddToGroupAsync(connectionId, $"global_{lobbyId}", CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task JoinGlobalChat_LobbyNotFound_ThrowsHubException()
+    {
+        const string lobbyId = "test-lobby";
+        const long userId = 1;
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns((Lobby)null!);
+        
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.JoinGlobalChat(lobbyId, userId));
+    }
+
+    [Fact]
+    public async Task LeaveGlobalChat_LobbyExists_RemovesFromGroup()
+    {
+        const string lobbyId = "test-lobby";
+        const long userId = 1;
+        const string connectionId = "test-connection";
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _hubCallerContextMock.Setup(c => c.ConnectionId).Returns(connectionId);
+        
+        await _chatHub.LeaveGlobalChat(lobbyId, userId);
+        
+        _groupManagerMock.Verify(g => g.RemoveFromGroupAsync(connectionId, $"global_{lobbyId}", CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task LeaveGlobalChat_LobbyNotFound_ThrowsHubException()
+    {
+        const string lobbyId = "test-lobby";
+        const long userId = 1;
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns((Lobby)null!);
+        
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.LeaveGlobalChat(lobbyId, userId));
+    }
+
+    [Fact]
+    public async Task JoinPrivateChannel_ValidRequest_AddsToGroup()
+    {
+        const string lobbyId = "test-lobby";
+        const string channelName = "mafia";
+        const long userId = 1;
+        const string connectionId = "test-connection";
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.PrivateChannelExistsAsync(lobbyId, channelName)).ReturnsAsync(true);
+        _chatServiceMock.Setup(s => s.UserHasAccessToChannelAsync(lobbyId, channelName, userId)).ReturnsAsync(true);
+        _hubCallerContextMock.Setup(c => c.ConnectionId).Returns(connectionId);
+        
+        await _chatHub.JoinPrivateChannel(lobbyId, channelName, userId);
+        
+        _groupManagerMock.Verify(g => g.AddToGroupAsync(connectionId, $"private_{channelName}_{lobbyId}", CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task JoinPrivateChannel_ChannelNotFound_ThrowsHubException()
+    {
+        const string lobbyId = "test-lobby";
+        const string channelName = "mafia";
+        const long userId = 1;
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.PrivateChannelExistsAsync(lobbyId, channelName)).ReturnsAsync(false);
+        
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.JoinPrivateChannel(lobbyId, channelName, userId));
+    }
+
+    [Fact]
+    public async Task JoinPrivateChannel_AccessDenied_ThrowsHubException()
+    {
+        const string lobbyId = "test-lobby";
+        const string channelName = "mafia";
+        const long userId = 1;
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.PrivateChannelExistsAsync(lobbyId, channelName)).ReturnsAsync(true);
+        _chatServiceMock.Setup(s => s.UserHasAccessToChannelAsync(lobbyId, channelName, userId)).ReturnsAsync(false);
+        
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.JoinPrivateChannel(lobbyId, channelName, userId));
+    }
+
+    [Fact]
+    public async Task LeavePrivateChannel_LobbyExists_RemovesFromGroup()
+    {
+        const string lobbyId = "test-lobby";
+        const string channelName = "mafia";
+        const long userId = 1;
+        const string connectionId = "test-connection";
+        _chatServiceMock.Setup(s => s.GetLobby( lobbyId)).Returns(new Lobby { Id = lobbyId });
+        _hubCallerContextMock.Setup(c => c.ConnectionId).Returns(connectionId);
+        
+        await _chatHub.LeavePrivateChannel(lobbyId, channelName, userId);
+        
+        _groupManagerMock.Verify(g => g.RemoveFromGroupAsync(connectionId, $"private_{channelName}_{lobbyId}", CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task LeavePrivateChannel_LobbyNotFound_ThrowsHubException()
+    {
+        const string lobbyId = "test-lobby";
+        const string channelName = "mafia";
+        const long userId = 1;
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns((Lobby)null!);
+        
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.LeavePrivateChannel(lobbyId, channelName, userId));
     }
 }

@@ -33,7 +33,6 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 builder.Services.AddDbContext<ChatDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// builder.Services.AddSingleton<IChatService, InMemoryChatService>();
 builder.Services.AddScoped<IChatService, PostgresChatService>();
 
 var app = builder.Build();

@@ -121,6 +121,118 @@ dotnet test
 
 All request and response bodies are in **JSON** format.
 
+---
+
+### Get Lobby
+
+**Endpoint:** `GET /api/chat/lobby/{lobbyId}`
+
+**Description:** Retrieves the specified lobby.
+
+**Success Response (200):**
+
+```json
+{
+  "id": "test",
+  "privateChannels": {
+    "detectives": {
+      "name": "detectives",
+      "members": {
+        "2": true,
+        "3": true
+      }
+    },
+    "mafia": {
+      "name": "mafia",
+      "members": {
+        "0": true,
+        "1": true
+      }
+    }
+  }
+}
+```
+
+**Error Responses:**
+
+**404 Not Found**
+
+```json
+{
+  "error": {
+    "code": "LOBBY_NOT_FOUND",
+    "message": "Lobby does not exist"
+  }
+}
+```
+
+
+---
+
+### Create Lobby
+
+**Endpoint:** `POST /api/chat/lobby/create`
+
+**Description:** Retrieves the specified lobby.
+
+**Request Body:**
+
+```json
+{
+    "lobbyId": "test",
+    "privateChannels": [
+        {
+            "channelName": "mafia",
+            "memberIds": [0, 1]
+        },
+        {
+            "channelName": "detectives",
+            "memberIds": [2, 3]
+        }
+    ]
+}
+```
+
+**Success Response (200):**
+
+```json
+{
+  "id": "test",
+  "privateChannels": {
+    "detectives": {
+      "name": "detectives",
+      "members": {
+        "2": true,
+        "3": true
+      }
+    },
+    "mafia": {
+      "name": "mafia",
+      "members": {
+        "0": true,
+        "1": true
+      }
+    }
+  }
+}
+```
+
+**Error Responses:**
+
+**400 Bad Request**
+
+```json
+{
+  "error": {
+    "code": "LOBBY_EXISTS",
+    "message": "Lobby already exists"
+  }
+}
+```
+
+
+---
+
 ### Send Global Message
 
 **Endpoint:** `POST /api/chat/global/{lobbyId}/send-message`
@@ -162,16 +274,6 @@ All request and response bodies are in **JSON** format.
   "error": {
     "code": "CHAT_DISABLED",
     "message": "Global chat is currently disabled for this lobby"
-  }
-}
-```
-
-**401 Unauthorized**
-```json
-{
-  "error": {
-    "code": "INVALID_TOKEN",
-    "message": "Invalid or expired token"
   }
 }
 ```
@@ -221,16 +323,6 @@ All request and response bodies are in **JSON** format.
   "error": {
     "code": "VALIDATION_ERROR",
     "message": "Sender name must be between 2 and 50 characters"
-  }
-}
-```
-
-**401 Unauthorized**
-```json
-{
-  "error": {
-    "code": "INVALID_TOKEN",
-    "message": "Invalid or expired token"
   }
 }
 ```
@@ -403,8 +495,50 @@ All request and response bodies are in **JSON** format.
 ```json
 {
   "error": {
-    "code": "NOT_FOUND",
-    "message": "Lobby or channel does not exist"
+    "code": "LOBBY_NOT_FOUND",
+    "message": "Lobby does not exist"
+  }
+}
+```
+
+**404 Not Found**
+
+```json
+{
+  "error": {
+    "code": "CHANNEL_NOT_FOUND",
+    "message": "Channel does not exist"
+  }
+}
+```
+
+
+---
+
+### Get Private Chat Channels
+
+**Endpoint:** `GET /api/chat/private/{lobbyId}/channels`
+
+**Description:** Retrieves the available private chat channels for the specified lobby.
+
+**Success Response (200):**
+
+```json
+[
+  "detectives",
+  "mafia"
+]
+```
+
+**Error Responses:**
+
+**404 Not Found**
+
+```json
+{
+  "error": {
+    "code": "LOBBY_NOT_FOUND",
+    "message": "Lobby does not exist"
   }
 }
 ```

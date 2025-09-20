@@ -4,9 +4,12 @@ namespace MafiaCommunicationService.Services;
 
 public interface IChatService
 {
-    Task<bool> LobbyExistsAsync(string lobbyId);
+    Lobby CreateNewLobby(LobbyCreationDto lobbyCreationDto);
+    Lobby? GetLobby(string lobbyId);
+    
     Task<bool> PrivateChannelExistsAsync(string lobbyId, string channelName);
     Task<bool> UserHasAccessToChannelAsync(string lobbyId, string channelName, long userId);
+    Task<IEnumerable<string>> GetPrivateChannelsAsync(string lobbyId);
     
     bool IsGlobalChatEnabled(string lobbyId);
     bool ToggleGlobalChat(string lobbyId);
