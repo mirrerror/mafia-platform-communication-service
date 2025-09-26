@@ -37,6 +37,12 @@ public class PostgresChatService(ChatDbContext dbContext) : IChatService
     {
         return Lobbies.GetValueOrDefault(lobbyId);
     }
+    
+    public void DeleteLobby(string lobbyId)
+    {
+        Lobbies.TryRemove(lobbyId, out _);
+        LobbyChatStatus.TryRemove(lobbyId, out _);
+    }
 
     public Task<bool> PrivateChannelExistsAsync(string lobbyId, string channelName) => Task.FromResult(Lobbies.TryGetValue(lobbyId, out var lobby) && lobby.PrivateChannels.ContainsKey(channelName));
     public Task<bool> UserHasAccessToChannelAsync(string lobbyId, string channelName, long userId)
