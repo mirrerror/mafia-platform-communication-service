@@ -112,16 +112,16 @@ ConnectionStrings__DefaultConnection="Host=localhost;Database=mafia_chat;..."
 You can also pull the pre-built Docker image of the service from Docker Hub.
 
 **Docker Hub Repository:** `m1rrerror/mafia-communication-service`
-**Latest Tag:** `v1.0.0`
+**Latest Tag:** `v1.1.0`
 
 #### Pull and Run
 
 ```bash
 # Pull the image
-docker pull m1rrerror/mafia-communication-service:v1.0.0
+docker pull m1rrerror/mafia-communication-service:v1.1.0
 
 # Run the container
-docker run -d -p 8080:80 --name mafia-communication-service m1rrerror/mafia-communication-service:v1.0.0
+docker run -d -p 8080:80 --name mafia-communication-service m1rrerror/mafia-communication-service:v1.1.0
 ```
 
 The service will be available at [http://localhost:8080](http://localhost:8080).
@@ -134,7 +134,7 @@ The service will be available at [http://localhost:8080](http://localhost:8080).
 docker run -d -p 8080:80 \
   -e ConnectionStrings__DefaultConnection="Host=db;Database=mafia_chat;Username=postgres;Password=postgres" \
   --name mafia-communication-service \
-  m1rrerror/mafia-communication-service:v1.0.0
+  m1rrerror/mafia-communication-service:v1.1.0
 ```
 
 * Stop the container:
