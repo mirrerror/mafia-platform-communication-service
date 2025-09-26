@@ -29,6 +29,17 @@ public class ChatController(
         var lobby = chatService.CreateNewLobby(lobbyCreationDto);
         return Ok(lobby);
     }
+    
+    [HttpDelete("lobby/{lobbyId}")]
+    public IActionResult DeleteLobby(string lobbyId)
+    {
+        var lobby = chatService.GetLobby(lobbyId);
+        if (lobby == null)
+            return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
+
+        chatService.DeleteLobby(lobbyId);
+        return Ok(new { message = "Lobby deleted successfully" });
+    }
 
     [HttpPost("global/{lobbyId}/send-message")]
     public async Task<IActionResult> SendGlobalMessage(string lobbyId, [FromBody] ChatMessage message)

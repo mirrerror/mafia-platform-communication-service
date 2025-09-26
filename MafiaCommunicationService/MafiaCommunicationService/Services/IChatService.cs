@@ -6,6 +6,7 @@ public interface IChatService
 {
     Lobby CreateNewLobby(LobbyCreationDto lobbyCreationDto);
     Lobby? GetLobby(string lobbyId);
+    void DeleteLobby(string lobbyId);
     
     Task<bool> PrivateChannelExistsAsync(string lobbyId, string channelName);
     Task<bool> UserHasAccessToChannelAsync(string lobbyId, string channelName, long userId);

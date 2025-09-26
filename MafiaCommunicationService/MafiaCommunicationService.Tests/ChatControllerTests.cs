@@ -73,6 +73,28 @@ public class ChatControllerTests
 
         Assert.IsType<BadRequestObjectResult>(result);
     }
+    
+    [Fact]
+    public void DeleteLobby_LobbyExists_ReturnsOk()
+    {
+        const string lobbyId = "test-lobby";
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns(new Lobby { Id = lobbyId });
+
+        var result = _controller.DeleteLobby(lobbyId);
+
+        Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
+    public void DeleteLobby_LobbyDoesNotExist_ReturnsNotFound()
+    {
+        const string lobbyId = "test-lobby";
+        _chatServiceMock.Setup(s => s.GetLobby(lobbyId)).Returns((Lobby)null!);
+
+        var result = _controller.DeleteLobby(lobbyId);
+
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
 
     [Fact]
     public async Task SendGlobalMessage_ValidRequest_ReturnsOk()
