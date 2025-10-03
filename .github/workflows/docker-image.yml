@@ -39,7 +39,7 @@ jobs:
         file: ./MafiaCommunicationService/MafiaCommunicationService/Dockerfile
         push: true
         tags: |
-          m1rrerror/communication-service:${{ steps.version.outputs.version }}
-          m1rrerror/communication-service:latest
-        cache-from: type=registry,ref=m1rrerror/communication-service:latest
+          m1rrerror/mafia-communication-service:${{ steps.version.outputs.version }}
+          m1rrerror/mafia-communication-service:latest
+        cache-from: type=registry,ref=m1rrerror/mafia-communication-service:latest
         cache-to: type=inline
