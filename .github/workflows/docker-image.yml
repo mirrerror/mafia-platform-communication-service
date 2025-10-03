@@ -35,8 +35,8 @@ jobs:
     - name: Build and push Docker image
       uses: docker/build-push-action@v5
       with:
-        context: ./mafia-platform-communication-service/MafiaCommunicationService
-        file: ./mafia-platform-communication-service/MafiaCommunicationService/MafiaCommunicationService/Dockerfile
+        context: ./MafiaCommunicationService
+        file: ./MafiaCommunicationService/MafiaCommunicationService/Dockerfile
         push: true
         tags: |
           m1rrerror/communication-service:${{ steps.version.outputs.version }}
