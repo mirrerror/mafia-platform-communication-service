@@ -36,7 +36,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ./Dockerfile
+        file: ./MafiaCommunicationService/MafiaCommunicationService/Dockerfile
         push: true
         tags: |
           m1rrerror/communication-service:${{ steps.version.outputs.version }}
