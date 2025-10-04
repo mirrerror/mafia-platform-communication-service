@@ -717,3 +717,30 @@ All request and response bodies are in **JSON** format.
   "timestamp": "2025-09-09T20:30:00.123Z"
 }
 ```
+
+
+---
+
+## General Errors
+
+**503 Service Unavailable**
+
+```json
+{
+  "error": {
+    "code": "CONCURRENCY_LIMIT_REACHED",
+    "message": "The service is temporarily overloaded. Please try again later."
+  }
+}
+```
+
+**408 Request Timeout**
+
+```json
+{
+  "error": {
+    "code": "REQUEST_TIMEOUT",
+    "message": "The request took too long to process."
+  }
+}
+```
