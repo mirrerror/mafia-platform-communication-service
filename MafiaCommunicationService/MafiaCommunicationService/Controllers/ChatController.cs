@@ -18,7 +18,7 @@ public class ChatController(
         var lobby = chatService.GetLobby(lobbyId);
         if (lobby == null)
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
-        return Ok(lobby);
+        return Ok(new ApiResponse<Lobby>(lobby));
     }
 
     [HttpPost("lobby/create")]
@@ -27,7 +27,7 @@ public class ChatController(
         if (chatService.GetLobby(lobbyCreationDto.LobbyId) != null)
             return BadRequest(new ErrorResponse("LOBBY_EXISTS", "Lobby already exists"));
         var lobby = chatService.CreateNewLobby(lobbyCreationDto);
-        return Ok(lobby);
+        return Ok(new ApiResponse<Lobby>(lobby));
     }
     
     [HttpDelete("lobby/{lobbyId}")]
@@ -38,7 +38,7 @@ public class ChatController(
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
         chatService.DeleteLobby(lobbyId);
-        return Ok(new { message = "Lobby deleted successfully" });
+        return Ok(new ApiResponse<object>(new { message = "Lobby deleted successfully" }));
     }
 
     [HttpPost("global/{lobbyId}/send-message")]
@@ -63,8 +63,8 @@ public class ChatController(
         await chatService.SaveMessageAsync(entity);
 
         var response = new ChatResponse { LobbyId = lobbyId, SenderId = entity.SenderId, SenderName = entity.SenderName, Content = entity.Content, Timestamp = entity.Timestamp };
-        await hubContext.Clients.Group($"global_{lobbyId}").SendAsync("ReceiveGlobalMessage", response);
-        return Ok(response);
+        await hubContext.Clients.Group($"global_{lobbyId}").SendAsync("ReceiveGlobalMessage", new ApiResponse<ChatResponse>(response));
+        return Ok(new ApiResponse<ChatResponse>(response));
     }
 
     [HttpGet("global/{lobbyId}/history")]
@@ -75,7 +75,7 @@ public class ChatController(
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
         var history = await chatService.GetMessageHistoryAsync(lobbyId, null);
-        return Ok(history);
+        return Ok(new ApiResponse<IEnumerable<ChatMessageEntity>>(history));
     }
 
     [HttpPost("global/{lobbyId}/toggle")]
@@ -88,7 +88,7 @@ public class ChatController(
         var newStatus = chatService.ToggleGlobalChat(lobbyId);
         var response = new GlobalChatStatusResponse { LobbyId = lobbyId, IsGlobalChatEnabled = newStatus };
         await hubContext.Clients.Group($"global_{lobbyId}").SendAsync("ToggleGlobalChat");
-        return Ok(response);
+        return Ok(new ApiResponse<GlobalChatStatusResponse>(response));
     }
 
     [HttpGet("global/{lobbyId}/status")]
@@ -99,7 +99,7 @@ public class ChatController(
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
         var response = new GlobalChatStatusResponse { LobbyId = lobbyId, IsGlobalChatEnabled = chatService.IsGlobalChatEnabled(lobbyId) };
-        return Ok(response);
+        return Ok(new ApiResponse<GlobalChatStatusResponse>(response));
     }
 
     [HttpPost("private/{lobbyId}/{channelName}/send-message")]
@@ -126,8 +126,8 @@ public class ChatController(
         await chatService.SaveMessageAsync(entity);
 
         var response = new PrivateChatResponse { LobbyId = lobbyId, ChannelName = channelName, SenderId = entity.SenderId, SenderName = entity.SenderName, Content = entity.Content, Timestamp = entity.Timestamp };
-        await hubContext.Clients.Group($"private_{channelName}_{lobbyId}").SendAsync("ReceivePrivateMessage", response);
-        return Ok(response);
+        await hubContext.Clients.Group($"private_{channelName}_{lobbyId}").SendAsync("ReceivePrivateMessage", new ApiResponse<PrivateChatResponse>(response));
+        return Ok(new ApiResponse<PrivateChatResponse>(response));
     }
 
     [HttpGet("private/{lobbyId}/{channelName}/history")]
@@ -144,7 +144,7 @@ public class ChatController(
             return StatusCode(403, new ErrorResponse("ACCESS_DENIED", "You do not have access to this private channel's history"));
 
         var history = await chatService.GetMessageHistoryAsync(lobbyId, channelName);
-        return Ok(history);
+        return Ok(new ApiResponse<IEnumerable<ChatMessageEntity>>(history));
     }
 
     [HttpGet("private/{lobbyId}/channels")]
@@ -155,6 +155,6 @@ public class ChatController(
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
         var channels = await chatService.GetPrivateChannelsAsync(lobbyId);
-        return Ok(channels);
+        return Ok(new ApiResponse<IEnumerable<string>>(channels));
     }
 }

@@ -43,7 +43,10 @@ public class ChatHubTests
         await _chatHub.SendGlobalMessage(lobbyId, message);
         
         _clientProxyMock.Verify(
-            c => c.SendCoreAsync("ReceiveGlobalMessage", It.IsAny<object[]>(), CancellationToken.None),
+            c => c.SendCoreAsync(
+                "ReceiveGlobalMessage",
+                It.Is<object[]>(o => o.Length == 1 && o[0] is ApiResponse<ChatResponse>), 
+                CancellationToken.None),
             Times.Once);
     }
 
@@ -94,7 +97,10 @@ public class ChatHubTests
         await _chatHub.SendPrivateMessage(channelName, lobbyId, message);
         
         _clientProxyMock.Verify(
-            c => c.SendCoreAsync("ReceivePrivateMessage", It.IsAny<object[]>(), CancellationToken.None),
+            c => c.SendCoreAsync(
+                "ReceivePrivateMessage",
+                It.Is<object[]>(o => o.Length == 1 && o[0] is ApiResponse<PrivateChatResponse>), 
+                CancellationToken.None),
             Times.Once);
     }
 
