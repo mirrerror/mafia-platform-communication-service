@@ -1,13 +1,25 @@
 using DotNetEnv;
 using MafiaCommunicationService.Data;
+using MafiaCommunicationService.Filters;
 using MafiaCommunicationService.Hubs;
+using MafiaCommunicationService.Middleware;
 using MafiaCommunicationService.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 Env.Load(options: LoadOptions.TraversePath());
 
 var builder = WebApplication.CreateBuilder(args);
+
+var maxConcurrentRequestsStr = Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS") ?? "100";
+if (!int.TryParse(maxConcurrentRequestsStr, out var maxConcurrentRequests))
+{
+    maxConcurrentRequests = 100;
+}
+
+builder.Services.AddSingleton(new SemaphoreSlim(maxConcurrentRequests, maxConcurrentRequests));
+builder.Services.AddSingleton<IHubFilter, ThrottlingHubFilter>();
 
 builder.Services.AddCors(options =>
 {
@@ -57,8 +69,10 @@ using (var scope = app.Services.CreateScope())
 
 app.UseCors("CorsPolicy");
 app.UseRouting();
+
+app.UseMiddleware<RequestThrottlingMiddleware>();
+
 app.MapControllers();
 app.MapHub<ChatHub>("/chathub");
 
 app.Run();
-
