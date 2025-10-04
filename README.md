@@ -112,16 +112,15 @@ ConnectionStrings__DefaultConnection="Host=localhost;Database=mafia_chat;..."
 You can also pull the pre-built Docker image of the service from Docker Hub.
 
 **Docker Hub Repository:** `m1rrerror/mafia-communication-service`
-**Latest Tag:** `v1.1.0`
 
 #### Pull and Run
 
 ```bash
 # Pull the image
-docker pull m1rrerror/mafia-communication-service:v1.1.0
+docker pull m1rrerror/mafia-communication-service:latest
 
 # Run the container
-docker run -d -p 8080:80 --name mafia-communication-service m1rrerror/mafia-communication-service:v1.1.0
+docker run -d -p 8080:80 --name mafia-communication-service m1rrerror/mafia-communication-service:latest
 ```
 
 The service will be available at [http://localhost:8080](http://localhost:8080).
@@ -134,7 +133,7 @@ The service will be available at [http://localhost:8080](http://localhost:8080).
 docker run -d -p 8080:80 \
   -e ConnectionStrings__DefaultConnection="Host=db;Database=mafia_chat;Username=postgres;Password=postgres" \
   --name mafia-communication-service \
-  m1rrerror/mafia-communication-service:v1.1.0
+  m1rrerror/mafia-communication-service:latest
 ```
 
 * Stop the container:
@@ -172,20 +171,22 @@ All request and response bodies are in **JSON** format.
 
 ```json
 {
-  "id": "test",
-  "privateChannels": {
-    "detectives": {
-      "name": "detectives",
-      "members": {
-        "2": true,
-        "3": true
-      }
-    },
-    "mafia": {
-      "name": "mafia",
-      "members": {
-        "0": true,
-        "1": true
+  "data": {
+    "id": "test",
+    "privateChannels": {
+      "detectives": {
+        "name": "detectives",
+        "members": {
+          "2": true,
+          "3": true
+        }
+      },
+      "mafia": {
+        "name": "mafia",
+        "members": {
+          "0": true,
+          "1": true
+        }
       }
     }
   }
@@ -236,20 +237,22 @@ All request and response bodies are in **JSON** format.
 
 ```json
 {
-  "id": "test",
-  "privateChannels": {
-    "detectives": {
-      "name": "detectives",
-      "members": {
-        "2": true,
-        "3": true
-      }
-    },
-    "mafia": {
-      "name": "mafia",
-      "members": {
-        "0": true,
-        "1": true
+  "data": {
+    "id": "test",
+    "privateChannels": {
+      "detectives": {
+        "name": "detectives",
+        "members": {
+          "2": true,
+          "3": true
+        }
+      },
+      "mafia": {
+        "name": "mafia",
+        "members": {
+          "0": true,
+          "1": true
+        }
       }
     }
   }
@@ -282,7 +285,9 @@ All request and response bodies are in **JSON** format.
 
 ```json
 {
-  "message": "Lobby deleted successfully"
+  "data": {
+    "message": "Lobby deleted successfully"
+  }
 }
 ```
 
@@ -317,11 +322,13 @@ All request and response bodies are in **JSON** format.
 **Success Response (200):**
 ```json
 {
-  "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
-  "senderId": 123,
-  "senderName": "TestUser",
-  "content": "Hello, world!",
-  "timestamp": "2025-09-09T20:30:00.123Z"
+  "data": {
+    "lobbyId": "test",
+    "senderId": 0,
+    "senderName": "mirrerror",
+    "content": "test message",
+    "timestamp": "2025-10-04T18:27:46.9786613Z"
+  }
 }
 ```
 
@@ -375,12 +382,14 @@ All request and response bodies are in **JSON** format.
 **Success Response (200):**
 ```json
 {
-  "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
-  "channelName": "detectives",
-  "senderId": 123,
-  "senderName": "TestUser",
-  "content": "Hello, world!",
-  "timestamp": "2025-09-09T20:30:00.123Z"
+  "data": {
+    "channelName": "detectives",
+    "lobbyId": "test",
+    "senderId": 2,
+    "senderName": "mirrerror",
+    "content": "test message",
+    "timestamp": "2025-10-04T18:28:28.3525069Z"
+  }
 }
 ```
 
@@ -437,16 +446,20 @@ All request and response bodies are in **JSON** format.
 **Success Response (200) - Chat Enabled:**
 ```json
 {
-  "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
-  "isGlobalChatEnabled": true
+  "data": {
+    "lobbyId": "test",
+    "isGlobalChatEnabled": true
+  }
 }
 ```
 
 **Success Response (200) - Chat Disabled:**
 ```json
 {
-  "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
-  "isGlobalChatEnabled": false
+  "data": {
+    "lobbyId": "test",
+    "isGlobalChatEnabled": false
+  }
 }
 ```
 
@@ -478,22 +491,19 @@ All request and response bodies are in **JSON** format.
 **Success Response (200):**
 
 ```json
-[
-  {
-    "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
-    "senderId": 123,
-    "senderName": "TestUser",
-    "content": "Hello, world!",
-    "timestamp": "2025-09-09T20:30:00.123Z"
-  },
-  {
-    "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
-    "senderId": 456,
-    "senderName": "AnotherUser",
-    "content": "Welcome!",
-    "timestamp": "2025-09-09T20:31:10.456Z"
-  }
-]
+{
+  "data": [
+    {
+      "id": "04abf639-2eac-4711-9792-d48068de45b0",
+      "lobbyId": "test",
+      "channelName": null,
+      "senderId": 0,
+      "senderName": "mirrerror",
+      "content": "test message",
+      "timestamp": "2025-10-04T18:27:46.978661Z"
+    }
+  ]
+}
 ```
 
 **Error Responses:**
@@ -526,24 +536,19 @@ All request and response bodies are in **JSON** format.
 **Success Response (200):**
 
 ```json
-[
-  {
-    "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
-    "channelName": "detectives",
-    "senderId": 123,
-    "senderName": "TestUser",
-    "content": "We should meet tonight.",
-    "timestamp": "2025-09-09T20:30:00.123Z"
-  },
-  {
-    "lobbyId": "550e8400-e29b-41d4-a716-446655440000",
-    "channelName": "detectives",
-    "senderId": 456,
-    "senderName": "AnotherUser",
-    "content": "Agreed.",
-    "timestamp": "2025-09-09T20:32:20.789Z"
-  }
-]
+{
+  "data": [
+    {
+      "id": "4d859f97-b693-4219-b976-684bec8da878",
+      "lobbyId": "test",
+      "channelName": "detectives",
+      "senderId": 2,
+      "senderName": "mirrerror",
+      "content": "test message",
+      "timestamp": "2025-10-04T18:28:28.352506Z"
+    }
+  ]
+}
 ```
 
 **Error Responses:**
@@ -593,10 +598,12 @@ All request and response bodies are in **JSON** format.
 **Success Response (200):**
 
 ```json
-[
-  "detectives",
-  "mafia"
-]
+{
+  "data": [
+    "detectives",
+    "mafia"
+  ]
+}
 ```
 
 **Error Responses:**
@@ -708,5 +715,32 @@ All request and response bodies are in **JSON** format.
   "senderName": "TestUser",
   "content": "Hello, world!",
   "timestamp": "2025-09-09T20:30:00.123Z"
+}
+```
+
+
+---
+
+## General Errors
+
+**503 Service Unavailable**
+
+```json
+{
+  "error": {
+    "code": "CONCURRENCY_LIMIT_REACHED",
+    "message": "The service is temporarily overloaded. Please try again later."
+  }
+}
+```
+
+**408 Request Timeout**
+
+```json
+{
+  "error": {
+    "code": "REQUEST_TIMEOUT",
+    "message": "The request took too long to process."
+  }
 }
 ```

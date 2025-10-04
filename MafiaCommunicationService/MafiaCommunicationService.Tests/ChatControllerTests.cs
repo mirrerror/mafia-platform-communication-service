@@ -29,7 +29,8 @@ public class ChatControllerTests
 
         var result = _controller.GetLobby(lobbyId);
 
-        Assert.IsType<OkObjectResult>(result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ApiResponse<Lobby>>(okResult.Value);
     }
 
     [Fact]
@@ -56,7 +57,8 @@ public class ChatControllerTests
 
         var result = _controller.CreateLobby(lobbyDto);
 
-        Assert.IsType<OkObjectResult>(result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ApiResponse<Lobby>>(okResult.Value);
     }
 
     [Fact]
@@ -82,7 +84,8 @@ public class ChatControllerTests
 
         var result = _controller.DeleteLobby(lobbyId);
 
-        Assert.IsType<OkObjectResult>(result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ApiResponse<object>>(okResult.Value);
     }
 
     [Fact]
@@ -110,7 +113,8 @@ public class ChatControllerTests
 
         var result = await _controller.SendGlobalMessage(lobbyId, message);
 
-        Assert.IsType<OkObjectResult>(result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ApiResponse<ChatResponse>>(okResult.Value);
     }
 
     [Fact]
@@ -148,7 +152,8 @@ public class ChatControllerTests
 
         var result = await _controller.GetGlobalChatHistory(lobbyId);
 
-        Assert.IsType<OkObjectResult>(result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ApiResponse<IEnumerable<ChatMessageEntity>>>(okResult.Value);
     }
 
     [Fact]
@@ -175,7 +180,8 @@ public class ChatControllerTests
 
         var result = await _controller.ToggleGlobalChat(lobbyId);
 
-        Assert.IsType<OkObjectResult>(result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ApiResponse<GlobalChatStatusResponse>>(okResult.Value);
     }
 
     [Fact]
@@ -199,7 +205,8 @@ public class ChatControllerTests
         var result = _controller.GetGlobalChatStatus(lobbyId);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
-        var response = Assert.IsType<GlobalChatStatusResponse>(okResult.Value);
+        var apiResponse = Assert.IsType<ApiResponse<GlobalChatStatusResponse>>(okResult.Value);
+        var response = apiResponse.Data;
         Assert.True(response.IsGlobalChatEnabled);
     }
 
@@ -230,7 +237,8 @@ public class ChatControllerTests
 
         var result = await _controller.SendPrivateMessage(lobbyId, channelName, message);
 
-        Assert.IsType<OkObjectResult>(result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ApiResponse<PrivateChatResponse>>(okResult.Value);
     }
 
     [Fact]
@@ -290,7 +298,8 @@ public class ChatControllerTests
 
         var result = await _controller.GetPrivateChatHistory(lobbyId, channelName, userId);
 
-        Assert.IsType<OkObjectResult>(result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ApiResponse<IEnumerable<ChatMessageEntity>>>(okResult.Value);
     }
 
     [Fact]
@@ -345,7 +354,8 @@ public class ChatControllerTests
 
         var result = await _controller.GetPrivateChannels(lobbyId);
 
-        Assert.IsType<OkObjectResult>(result);
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ApiResponse<IEnumerable<string>>>(okResult.Value);
     }
 
     [Fact]
