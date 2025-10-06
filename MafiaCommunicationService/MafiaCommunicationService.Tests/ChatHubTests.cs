@@ -14,6 +14,7 @@ public class ChatHubTests
     private readonly Mock<IGroupManager> _groupManagerMock;
     private readonly Mock<IHubCallerClients> _clientsMock;
     private readonly Mock<IClientProxy> _clientProxyMock;
+    private readonly Mock<ISingleClientProxy> _singleClientProxyMock;
 
     public ChatHubTests()
     {
@@ -22,6 +23,7 @@ public class ChatHubTests
         _groupManagerMock = new Mock<IGroupManager>();
         _clientsMock = new Mock<IHubCallerClients>();
         _clientProxyMock = new Mock<IClientProxy>();
+        _singleClientProxyMock = new Mock<ISingleClientProxy>();
 
         _chatHub = new ChatHub(_chatServiceMock.Object)
         {
@@ -29,6 +31,10 @@ public class ChatHubTests
             Groups = _groupManagerMock.Object,
             Clients = _clientsMock.Object
         };
+
+        _clientsMock.Setup(c => c.Group(It.IsAny<string>())).Returns(_clientProxyMock.Object);
+        _clientsMock.Setup(c => c.Client(It.IsAny<string>())).Returns(_singleClientProxyMock.Object);
+        _clientsMock.Setup(c => c.All).Returns(_clientProxyMock.Object);
     }
 
     [Fact]
@@ -38,7 +44,6 @@ public class ChatHubTests
         var message = new ChatMessage { SenderId = 1, SenderName = "User1", Content = "Hello" };
         _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync(new Lobby { Id = lobbyId });
         _chatServiceMock.Setup(s => s.IsGlobalChatEnabledAsync(lobbyId)).ReturnsAsync(true);
-        _clientsMock.Setup(c => c.Group($"global_{lobbyId}")).Returns(_clientProxyMock.Object);
         
         await _chatHub.SendGlobalMessage(lobbyId, message);
         
@@ -147,5 +152,34 @@ public class ChatHubTests
         _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync((Lobby)null!);
         
         await Assert.ThrowsAsync<HubException>(() => _chatHub.LeavePrivateChannel(lobbyId, channelName, 1));
+    }
+    
+    [Fact]
+    public async Task SendAnnouncement_LobbyExists_SendsAnnouncementToGroup()
+    {
+        const string lobbyId = "test-lobby";
+        var announcementDto = new AnnouncementDto { Content = "Test Announcement" };
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.CreateAnnouncementAsync(lobbyId, announcementDto))
+            .ReturnsAsync(new Announcement { LobbyId = lobbyId, Content = announcementDto.Content });
+
+        await _chatHub.SendAnnouncement(lobbyId, announcementDto);
+        
+        _clientProxyMock.Verify(
+            c => c.SendCoreAsync(
+                "ReceiveAnnouncement",
+                It.Is<object[]>(o => o.Length == 1 && o[0] is ApiResponse<Announcement>), 
+                CancellationToken.None),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task SendAnnouncement_LobbyNotFound_ThrowsHubException()
+    {
+        const string lobbyId = "non-existent-lobby";
+        var announcementDto = new AnnouncementDto { Content = "Test Announcement" };
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync((Lobby)null!);
+
+        await Assert.ThrowsAsync<HubException>(() => _chatHub.SendAnnouncement(lobbyId, announcementDto));
     }
 }
