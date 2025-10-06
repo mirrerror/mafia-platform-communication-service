@@ -154,4 +154,56 @@ public class ChatControllerTests
         var statusCodeResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(403, statusCodeResult.StatusCode);
     }
+
+    [Fact]
+    public async Task MakeAnnouncement_LobbyExists_ReturnsOk()
+    {
+        const string lobbyId = "test-lobby";
+        var announcementDto = new AnnouncementDto { Content = "Test Announcement" };
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.CreateAnnouncementAsync(lobbyId, announcementDto))
+            .ReturnsAsync(new Announcement { LobbyId = lobbyId, Content = announcementDto.Content });
+
+        var result = await _controller.MakeAnnouncement(lobbyId, announcementDto);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var apiResponse = Assert.IsType<ApiResponse<Announcement>>(okResult.Value);
+        Assert.Equal(announcementDto.Content, apiResponse.Data.Content);
+    }
+
+    [Fact]
+    public async Task MakeAnnouncement_LobbyDoesNotExist_ReturnsNotFound()
+    {
+        const string lobbyId = "non-existent-lobby";
+        var announcementDto = new AnnouncementDto { Content = "Test Announcement" };
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync((Lobby)null!);
+
+        var result = await _controller.MakeAnnouncement(lobbyId, announcementDto);
+
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task GetAnnouncementHistory_LobbyExists_ReturnsOk()
+    {
+        const string lobbyId = "test-lobby";
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.GetAnnouncementHistoryAsync(lobbyId, 50)).ReturnsAsync(new List<Announcement>());
+
+        var result = await _controller.GetAnnouncementHistory(lobbyId);
+
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        Assert.IsType<ApiResponse<IEnumerable<Announcement>>>(okResult.Value);
+    }
+
+    [Fact]
+    public async Task GetAnnouncementHistory_LobbyDoesNotExist_ReturnsNotFound()
+    {
+        const string lobbyId = "non-existent-lobby";
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync((Lobby)null!);
+
+        var result = await _controller.GetAnnouncementHistory(lobbyId);
+
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
 }

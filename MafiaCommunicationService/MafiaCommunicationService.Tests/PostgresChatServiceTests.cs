@@ -179,4 +179,50 @@ public class PostgresChatServiceTests
         
         Assert.Equal(expected, hasAccess);
     }
+
+    [Fact]
+    public async Task CreateAnnouncementAsync_ShouldCreateAndPersistAnnouncement()
+    {
+        var dbContextOptions = CreateNewContextOptions();
+        const string lobbyId = "test-lobby";
+        var announcementDto = new AnnouncementDto { Content = "Test Announcement" };
+
+        await using (var context = new ChatDbContext(dbContextOptions))
+        {
+            var service = new PostgresChatService(context);
+            await service.CreateAnnouncementAsync(lobbyId, announcementDto);
+        }
+
+        await using (var context = new ChatDbContext(dbContextOptions))
+        {
+            var announcement = await context.Announcements.FirstOrDefaultAsync(a => a.LobbyId == lobbyId);
+            Assert.NotNull(announcement);
+            Assert.Equal(announcementDto.Content, announcement.Content);
+        }
+    }
+
+    [Fact]
+    public async Task GetAnnouncementHistoryAsync_ShouldReturnAnnouncementsForLobby()
+    {
+        var dbContextOptions = CreateNewContextOptions();
+        const string lobbyId = "test-lobby";
+
+        await using (var context = new ChatDbContext(dbContextOptions))
+        {
+            context.Announcements.Add(new Announcement { LobbyId = lobbyId, Content = "Announcement 1" });
+            context.Announcements.Add(new Announcement { LobbyId = lobbyId, Content = "Announcement 2" });
+            context.Announcements.Add(new Announcement { LobbyId = "other-lobby", Content = "Other Announcement" });
+            await context.SaveChangesAsync();
+        }
+
+        IEnumerable<Announcement> history;
+        await using (var context = new ChatDbContext(dbContextOptions))
+        {
+            var service = new PostgresChatService(context);
+            history = await service.GetAnnouncementHistoryAsync(lobbyId);
+        }
+
+        Assert.Equal(2, history.Count());
+        Assert.All(history, a => Assert.Equal(lobbyId, a.LobbyId));
+    }
 }

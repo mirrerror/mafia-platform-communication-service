@@ -1,4 +1,4 @@
--- This script populates the Lobbies, PrivateChannels, PrivateChannelMembers, and Messages tables.
+-- This script populates the Lobbies, PrivateChannels, PrivateChannelMembers, Messages, and Announcements tables.
 -- It is idempotent and will only run if the "Lobbies" table is empty.
 -- All operations are performed within a single transaction.
 
@@ -48,6 +48,12 @@ BEGIN
             (gen_random_uuid(), 'seed_lobby_2', 'mafia', 204, 'Capo', 'Understood, Don. I have my target.', NOW() - INTERVAL '11 minutes'),
             (gen_random_uuid(), 'seed_lobby_2', 'detectives', 205, 'Inspector', 'I''ve got a lead on one of the suspects.', NOW() - INTERVAL '10 minutes'),
             (gen_random_uuid(), 'seed_lobby_2', 'detectives', 206, 'Sleuth', 'Let''s gather more evidence before we make a move.', NOW() - INTERVAL '9 minutes');
+            
+        INSERT INTO "Announcements" ("Id", "LobbyId", "Content", "Timestamp")
+        VALUES
+            (gen_random_uuid(), 'seed_lobby_1', 'The game will begin in 5 minutes!', NOW() - INTERVAL '4 minutes'),
+            (gen_random_uuid(), 'seed_lobby_1', 'Remember to play fair and have fun!', NOW() - INTERVAL '3 minutes'),
+            (gen_random_uuid(), 'seed_lobby_2', 'Welcome to the beta test of our new lobby!', NOW() - INTERVAL '8 minutes');
 
         RAISE NOTICE 'Database seeded with initial data for all tables.';
     ELSE
