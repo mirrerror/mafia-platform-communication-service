@@ -93,6 +93,16 @@ public class ChatHub(IChatService chatService) : Hub
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"private_{channelName}_{lobbyId}");
     }
     
+    public async Task SendAnnouncement(string lobbyId, AnnouncementDto announcementDto)
+    {
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
+            throw new HubException("LOBBY_NOT_FOUND: Lobby does not exist.");
+
+        var announcement = await chatService.CreateAnnouncementAsync(lobbyId, announcementDto);
+
+        await Clients.Group($"global_{lobbyId}").SendAsync("ReceiveAnnouncement", new ApiResponse<Announcement>(announcement));
+    }
+    
     private static void ValidateMessage(ChatMessage message)
     {
         var validationContext = new ValidationContext(message);

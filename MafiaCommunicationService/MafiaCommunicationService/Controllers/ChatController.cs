@@ -155,4 +155,26 @@ public class ChatController(
         var channels = await chatService.GetPrivateChannelsAsync(lobbyId);
         return Ok(new ApiResponse<IEnumerable<string>>(channels));
     }
+    
+    [HttpPost("announcement/{lobbyId}")]
+    public async Task<IActionResult> MakeAnnouncement(string lobbyId, [FromBody] AnnouncementDto announcementDto)
+    {
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
+            return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
+
+        var announcement = await chatService.CreateAnnouncementAsync(lobbyId, announcementDto);
+
+        await hubContext.Clients.Group($"global_{lobbyId}").SendAsync("ReceiveAnnouncement", new ApiResponse<Announcement>(announcement));
+        return Ok(new ApiResponse<Announcement>(announcement));
+    }
+
+    [HttpGet("announcement/{lobbyId}/history")]
+    public async Task<IActionResult> GetAnnouncementHistory(string lobbyId)
+    {
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
+            return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
+
+        var history = await chatService.GetAnnouncementHistoryAsync(lobbyId);
+        return Ok(new ApiResponse<IEnumerable<Announcement>>(history));
+    }
 }

@@ -17,4 +17,7 @@ public interface IChatService
     
     Task SaveMessageAsync(ChatMessageEntity message);
     Task<IEnumerable<ChatMessageEntity>> GetMessageHistoryAsync(string lobbyId, string? channelName, int limit = 50);
+
+    Task<Announcement> CreateAnnouncementAsync(string lobbyId, AnnouncementDto announcementDto);
+    Task<IEnumerable<Announcement>> GetAnnouncementHistoryAsync(string lobbyId, int limit = 50);
 }

@@ -103,6 +103,30 @@ public class PostgresChatService(ChatDbContext dbContext) : IChatService
             .Where(m => m.LobbyId == lobbyId && m.ChannelName == channelName)
             .OrderByDescending(m => m.Timestamp).Take(limit).OrderBy(m => m.Timestamp)
             .AsNoTracking().ToListAsync();
+    
+    public async Task<Announcement> CreateAnnouncementAsync(string lobbyId, AnnouncementDto announcementDto)
+    {
+        var announcement = new Announcement
+        {
+            LobbyId = lobbyId,
+            Content = announcementDto.Content,
+            Timestamp = DateTime.UtcNow
+        };
+
+        dbContext.Announcements.Add(announcement);
+        await dbContext.SaveChangesAsync();
+
+        return announcement;
+    }
+    
+    public async Task<IEnumerable<Announcement>> GetAnnouncementHistoryAsync(string lobbyId, int limit = 50) =>
+        await dbContext.Announcements
+            .Where(a => a.LobbyId == lobbyId)
+            .OrderByDescending(a => a.Timestamp)
+            .Take(limit)
+            .OrderBy(a => a.Timestamp)
+            .AsNoTracking()
+            .ToListAsync();
 
     private static Lobby MapLobbyEntityToModel(LobbyEntity entity)
     {

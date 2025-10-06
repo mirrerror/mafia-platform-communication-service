@@ -9,6 +9,7 @@ public class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbContext(
     public DbSet<LobbyEntity> Lobbies { get; set; }
     public DbSet<PrivateChannelEntity> PrivateChannels { get; set; }
     public DbSet<PrivateChannelMemberEntity> PrivateChannelMembers { get; set; }
+    public DbSet<Announcement> Announcements { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
