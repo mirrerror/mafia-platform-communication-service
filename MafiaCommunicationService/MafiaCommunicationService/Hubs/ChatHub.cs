@@ -10,12 +10,11 @@ public class ChatHub(IChatService chatService) : Hub
 {
     public async Task SendGlobalMessage(string lobbyId, ChatMessage message)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             throw new HubException("LOBBY_NOT_FOUND: Lobby does not exist.");
         
         ValidateMessage(message);
-        if (!chatService.IsGlobalChatEnabled(lobbyId))
+        if (!await chatService.IsGlobalChatEnabledAsync(lobbyId))
             throw new HubException("Global chat is currently disabled for this lobby.");
         
         var entity = new ChatMessageEntity
@@ -35,8 +34,7 @@ public class ChatHub(IChatService chatService) : Hub
 
     public async Task SendPrivateMessage(string channelName, string lobbyId, ChatMessage message)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             throw new HubException("LOBBY_NOT_FOUND: Lobby does not exist.");
         
         ValidateMessage(message);
@@ -60,26 +58,23 @@ public class ChatHub(IChatService chatService) : Hub
 
     public async Task JoinGlobalChat(string lobbyId, long userId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             throw new HubException("LOBBY_NOT_FOUND: Lobby does not exist.");
         
         await Groups.AddToGroupAsync(Context.ConnectionId, $"global_{lobbyId}");
     }
 
-    public Task LeaveGlobalChat(string lobbyId, long userId)
+    public async Task LeaveGlobalChat(string lobbyId, long userId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             throw new HubException("LOBBY_NOT_FOUND: Lobby does not exist.");
         
-        return Groups.RemoveFromGroupAsync(Context.ConnectionId, $"global_{lobbyId}");
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"global_{lobbyId}");
     }
 
     public async Task JoinPrivateChannel(string lobbyId, string channelName, long userId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             throw new HubException("LOBBY_NOT_FOUND: Lobby does not exist.");
         
         if (!await chatService.PrivateChannelExistsAsync(lobbyId, channelName))
@@ -90,13 +85,12 @@ public class ChatHub(IChatService chatService) : Hub
         await Groups.AddToGroupAsync(Context.ConnectionId, $"private_{channelName}_{lobbyId}");
     }
 
-    public Task LeavePrivateChannel(string lobbyId, string channelName, long userId)
+    public async Task LeavePrivateChannel(string lobbyId, string channelName, long userId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             throw new HubException("LOBBY_NOT_FOUND: Lobby does not exist.");
         
-        return Groups.RemoveFromGroupAsync(Context.ConnectionId, $"private_{channelName}_{lobbyId}");
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"private_{channelName}_{lobbyId}");
     }
     
     private static void ValidateMessage(ChatMessage message)

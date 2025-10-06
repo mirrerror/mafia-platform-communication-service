@@ -13,42 +13,45 @@ public class ChatController(
     IChatService chatService) : ControllerBase
 {
     [HttpGet("lobby/{lobbyId}")]
-    public IActionResult GetLobby(string lobbyId)
+    public async Task<IActionResult> GetLobby(string lobbyId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
+        var lobby = await chatService.GetLobbyAsync(lobbyId);
         if (lobby == null)
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
         return Ok(new ApiResponse<Lobby>(lobby));
     }
 
     [HttpPost("lobby/create")]
-    public IActionResult CreateLobby([FromBody] LobbyCreationDto lobbyCreationDto)
+    public async Task<IActionResult> CreateLobby([FromBody] LobbyCreationDto lobbyCreationDto)
     {
-        if (chatService.GetLobby(lobbyCreationDto.LobbyId) != null)
-            return BadRequest(new ErrorResponse("LOBBY_EXISTS", "Lobby already exists"));
-        var lobby = chatService.CreateNewLobby(lobbyCreationDto);
-        return Ok(new ApiResponse<Lobby>(lobby));
+        try
+        {
+            var lobby = await chatService.CreateNewLobbyAsync(lobbyCreationDto);
+            return Ok(new ApiResponse<Lobby>(lobby));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new ErrorResponse("LOBBY_EXISTS", ex.Message));
+        }
     }
     
     [HttpDelete("lobby/{lobbyId}")]
-    public IActionResult DeleteLobby(string lobbyId)
+    public async Task<IActionResult> DeleteLobby(string lobbyId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        var success = await chatService.DeleteLobbyAsync(lobbyId);
+        if (!success)
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
-        chatService.DeleteLobby(lobbyId);
         return Ok(new ApiResponse<object>(new { message = "Lobby deleted successfully" }));
     }
 
     [HttpPost("global/{lobbyId}/send-message")]
     public async Task<IActionResult> SendGlobalMessage(string lobbyId, [FromBody] ChatMessage message)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
-        if (!chatService.IsGlobalChatEnabled(lobbyId))
+        if (!await chatService.IsGlobalChatEnabledAsync(lobbyId))
             return BadRequest(new ErrorResponse("CHAT_DISABLED", "Global chat is currently disabled for this lobby"));
 
         var entity = new ChatMessageEntity
@@ -70,8 +73,7 @@ public class ChatController(
     [HttpGet("global/{lobbyId}/history")]
     public async Task<IActionResult> GetGlobalChatHistory(string lobbyId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
         var history = await chatService.GetMessageHistoryAsync(lobbyId, null);
@@ -81,32 +83,30 @@ public class ChatController(
     [HttpPost("global/{lobbyId}/toggle")]
     public async Task<IActionResult> ToggleGlobalChat(string lobbyId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        var newStatus = await chatService.ToggleGlobalChatAsync(lobbyId);
+        if (newStatus == null)
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
-        var newStatus = chatService.ToggleGlobalChat(lobbyId);
-        var response = new GlobalChatStatusResponse { LobbyId = lobbyId, IsGlobalChatEnabled = newStatus };
+        var response = new GlobalChatStatusResponse { LobbyId = lobbyId, IsGlobalChatEnabled = newStatus.Value };
         await hubContext.Clients.Group($"global_{lobbyId}").SendAsync("ToggleGlobalChat");
         return Ok(new ApiResponse<GlobalChatStatusResponse>(response));
     }
 
     [HttpGet("global/{lobbyId}/status")]
-    public IActionResult GetGlobalChatStatus(string lobbyId)
+    public async Task<IActionResult> GetGlobalChatStatus(string lobbyId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
-        var response = new GlobalChatStatusResponse { LobbyId = lobbyId, IsGlobalChatEnabled = chatService.IsGlobalChatEnabled(lobbyId) };
+        var isEnabled = await chatService.IsGlobalChatEnabledAsync(lobbyId);
+        var response = new GlobalChatStatusResponse { LobbyId = lobbyId, IsGlobalChatEnabled = isEnabled };
         return Ok(new ApiResponse<GlobalChatStatusResponse>(response));
     }
 
     [HttpPost("private/{lobbyId}/{channelName}/send-message")]
     public async Task<IActionResult> SendPrivateMessage(string lobbyId, string channelName, [FromBody] ChatMessage message)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
         if (!await chatService.PrivateChannelExistsAsync(lobbyId, channelName))
@@ -133,8 +133,7 @@ public class ChatController(
     [HttpGet("private/{lobbyId}/{channelName}/history")]
     public async Task<IActionResult> GetPrivateChatHistory(string lobbyId, string channelName, [FromQuery] long userId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
         if (!await chatService.PrivateChannelExistsAsync(lobbyId, channelName))
@@ -150,8 +149,7 @@ public class ChatController(
     [HttpGet("private/{lobbyId}/channels")]
     public async Task<IActionResult> GetPrivateChannels(string lobbyId)
     {
-        var lobby = chatService.GetLobby(lobbyId);
-        if (lobby == null)
+        if (await chatService.GetLobbyAsync(lobbyId) == null)
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
         var channels = await chatService.GetPrivateChannelsAsync(lobbyId);
