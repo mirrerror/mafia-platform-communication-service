@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using MafiaCommunicationService.Data;
+﻿using MafiaCommunicationService.Data;
 using MafiaCommunicationService.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,56 +6,89 @@ namespace MafiaCommunicationService.Services;
 
 public class PostgresChatService(ChatDbContext dbContext) : IChatService
 {
-    private static readonly ConcurrentDictionary<string, Lobby> Lobbies = new();
-    private static readonly ConcurrentDictionary<string, bool> LobbyChatStatus = new();
-
-    public Lobby CreateNewLobby(LobbyCreationDto lobbyCreationDto)
+    public async Task<Lobby> CreateNewLobbyAsync(LobbyCreationDto lobbyCreationDto)
     {
-        var lobby = new Lobby { Id = lobbyCreationDto.LobbyId };
-
-        foreach (var channelDto in lobbyCreationDto.PrivateChannels)
+        var lobbyEntity = new LobbyEntity
         {
-            var privateChannel = new PrivateChannel { Name = channelDto.ChannelName };
-            foreach (var memberId in channelDto.MemberIds)
-            {
-                privateChannel.Members.TryAdd(memberId, true);
-            }
-            lobby.PrivateChannels.TryAdd(privateChannel.Name, privateChannel);
+            Id = lobbyCreationDto.LobbyId,
+            IsGlobalChatEnabled = false,
+            PrivateChannels = new List<PrivateChannelEntity>()
+        };
+
+        foreach (var channelEntity in lobbyCreationDto.PrivateChannels.Select(channelDto => new PrivateChannelEntity
+                 {
+                     Name = channelDto.ChannelName,
+                     LobbyId = lobbyEntity.Id,
+                     Lobby = lobbyEntity,
+                     Members = channelDto.MemberIds.Select(memberId => new PrivateChannelMemberEntity { MemberId = memberId }).ToList()
+                 }))
+        {
+            lobbyEntity.PrivateChannels.Add(channelEntity);
         }
 
-        var wasAdded = Lobbies.TryAdd(lobby.Id, lobby);
-        if (!wasAdded)
-        {
-            throw new InvalidOperationException("Lobby with this ID already exists.");
-        }
-        LobbyChatStatus.TryAdd(lobby.Id, false);
-        return lobby;
-    }
+        dbContext.Lobbies.Add(lobbyEntity);
 
-    public Lobby? GetLobby(string lobbyId)
-    {
-        return Lobbies.GetValueOrDefault(lobbyId);
+        try
+        {
+            await dbContext.SaveChangesAsync();
+        }
+        catch (Exception ex) when (ex is DbUpdateException or ArgumentException)
+        {
+            throw new InvalidOperationException("Lobby with this ID already exists.", ex);
+        }
+
+        return MapLobbyEntityToModel(lobbyEntity);
     }
     
-    public void DeleteLobby(string lobbyId)
+    public async Task<Lobby?> GetLobbyAsync(string lobbyId)
     {
-        Lobbies.TryRemove(lobbyId, out _);
-        LobbyChatStatus.TryRemove(lobbyId, out _);
+        var lobbyEntity = await dbContext.Lobbies
+            .Include(l => l.PrivateChannels)
+            .ThenInclude(pc => pc.Members)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == lobbyId);
+
+        return lobbyEntity == null ? null : MapLobbyEntityToModel(lobbyEntity);
     }
 
-    public Task<bool> PrivateChannelExistsAsync(string lobbyId, string channelName) => Task.FromResult(Lobbies.TryGetValue(lobbyId, out var lobby) && lobby.PrivateChannels.ContainsKey(channelName));
-    public Task<bool> UserHasAccessToChannelAsync(string lobbyId, string channelName, long userId)
+    public async Task<bool> DeleteLobbyAsync(string lobbyId)
     {
-        if (Lobbies.TryGetValue(lobbyId, out var lobby) && lobby.PrivateChannels.TryGetValue(channelName, out var channel))
-            return Task.FromResult(channel.Members.ContainsKey(userId));
-        return Task.FromResult(false);
-    }
-    public bool IsGlobalChatEnabled(string lobbyId) => LobbyChatStatus.GetValueOrDefault(lobbyId, false);
-    public bool ToggleGlobalChat(string lobbyId) => LobbyChatStatus.AddOrUpdate(lobbyId, true, (_, v) => !v);
+        var lobby = await dbContext.Lobbies.FirstOrDefaultAsync(l => l.Id == lobbyId);
+        if (lobby == null) return false;
 
-    public Task<IEnumerable<string>> GetPrivateChannelsAsync(string lobbyId)
+        dbContext.Lobbies.Remove(lobby);
+        await dbContext.SaveChangesAsync();
+        return true;
+    }
+    
+    public async Task<bool> PrivateChannelExistsAsync(string lobbyId, string channelName) => 
+        await dbContext.PrivateChannels.AnyAsync(pc => pc.LobbyId == lobbyId && pc.Name == channelName);
+
+    public async Task<bool> UserHasAccessToChannelAsync(string lobbyId, string channelName, long userId) =>
+        await dbContext.PrivateChannelMembers.AnyAsync(pcm => pcm.MemberId == userId &&
+                                pcm.PrivateChannel.LobbyId == lobbyId &&
+                                pcm.PrivateChannel.Name == channelName);
+
+    public async Task<IEnumerable<string>> GetPrivateChannelsAsync(string lobbyId) =>
+        await dbContext.PrivateChannels.Where(pc => pc.LobbyId == lobbyId).Select(pc => pc.Name).ToListAsync();
+        
+    public async Task<bool> IsGlobalChatEnabledAsync(string lobbyId)
     {
-        return Lobbies.TryGetValue(lobbyId, out var lobby) ? Task.FromResult<IEnumerable<string>>(lobby.PrivateChannels.Keys.ToList()) : Task.FromResult(Enumerable.Empty<string>());
+        var status = await dbContext.Lobbies
+            .Where(l => l.Id == lobbyId)
+            .Select(l => (bool?)l.IsGlobalChatEnabled)
+            .FirstOrDefaultAsync();
+        return status ?? false;
+    }
+
+    public async Task<bool?> ToggleGlobalChatAsync(string lobbyId)
+    {
+        var lobby = await dbContext.Lobbies.FirstOrDefaultAsync(l => l.Id == lobbyId);
+        if (lobby == null) return null;
+
+        lobby.IsGlobalChatEnabled = !lobby.IsGlobalChatEnabled;
+        await dbContext.SaveChangesAsync();
+        return lobby.IsGlobalChatEnabled;
     }
 
     public async Task SaveMessageAsync(ChatMessageEntity message)
@@ -66,11 +98,26 @@ public class PostgresChatService(ChatDbContext dbContext) : IChatService
         await dbContext.SaveChangesAsync();
     }
 
-    public async Task<IEnumerable<ChatMessageEntity>> GetMessageHistoryAsync(string lobbyId, string? channelName, int limit = 50)
-    {
-        return await dbContext.Messages
+    public async Task<IEnumerable<ChatMessageEntity>> GetMessageHistoryAsync(string lobbyId, string? channelName, int limit = 50) =>
+        await dbContext.Messages
             .Where(m => m.LobbyId == lobbyId && m.ChannelName == channelName)
             .OrderByDescending(m => m.Timestamp).Take(limit).OrderBy(m => m.Timestamp)
             .AsNoTracking().ToListAsync();
+
+    private static Lobby MapLobbyEntityToModel(LobbyEntity entity)
+    {
+        var lobby = new Lobby { Id = entity.Id };
+        foreach (var channelEntity in entity.PrivateChannels)
+        {
+            var privateChannel = new PrivateChannel { Name = channelEntity.Name };
+            
+            foreach (var memberEntity in channelEntity.Members)
+            {
+                privateChannel.Members.TryAdd(memberEntity.MemberId, true);
+            }
+            
+            lobby.PrivateChannels.TryAdd(privateChannel.Name, privateChannel);
+        }
+        return lobby;
     }
 }

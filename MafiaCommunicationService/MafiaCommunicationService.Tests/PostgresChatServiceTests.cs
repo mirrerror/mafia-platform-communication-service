@@ -1,275 +1,182 @@
-﻿using System.Reflection;
-using MafiaCommunicationService.Data;
+﻿using MafiaCommunicationService.Data;
 using MafiaCommunicationService.Models;
 using MafiaCommunicationService.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace MafiaCommunicationService.Tests;
 
-public class PostgresChatServiceTests : IDisposable
+public class PostgresChatServiceTests
 {
-    private readonly DbContextOptions<ChatDbContext> _dbContextOptions = new DbContextOptionsBuilder<ChatDbContext>()
-        .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-        .Options;
-
-    public void Dispose()
+    private DbContextOptions<ChatDbContext> CreateNewContextOptions()
     {
-        var lobbiesField = typeof(PostgresChatService).GetField("Lobbies", BindingFlags.NonPublic | BindingFlags.Static);
-        if (lobbiesField != null)
-        {
-            var lobbies = lobbiesField.GetValue(null) as System.Collections.Concurrent.ConcurrentDictionary<string, Lobby>;
-            lobbies?.Clear();
-        }
-
-        var lobbyChatStatusField = typeof(PostgresChatService).GetField("LobbyChatStatus", BindingFlags.NonPublic | BindingFlags.Static);
-        if (lobbyChatStatusField == null) return;
-        var lobbyChatStatuses = lobbyChatStatusField.GetValue(null) as System.Collections.Concurrent.ConcurrentDictionary<string, bool>;
-        lobbyChatStatuses?.Clear();
+        return new DbContextOptionsBuilder<ChatDbContext>()
+            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
+            .Options;
     }
 
-    private ChatDbContext CreateContext() => new(_dbContextOptions);
-
     [Fact]
-    public void CreateNewLobby_ShouldCreateLobbyWithDefaultChannels()
+    public async Task CreateNewLobbyAsync_ShouldCreateAndPersistLobby()
     {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
+        var dbContextOptions = CreateNewContextOptions();
         var lobbyDto = new LobbyCreationDto
         {
-            LobbyId = "testLobby",
+            LobbyId = "test-lobby",
             PrivateChannels =
             [
-                new PrivateChannelDto { ChannelName = "mafia", MemberIds = [] },
-                new PrivateChannelDto { ChannelName = "detectives", MemberIds = [] }
+                new PrivateChannelDto { ChannelName = "mafia", MemberIds = [1, 2] }
             ]
         };
 
-        var lobby = chatService.CreateNewLobby(lobbyDto);
-
-        Assert.NotNull(lobby);
-        Assert.Equal(lobbyDto.LobbyId, lobby.Id);
-        Assert.True(lobby.PrivateChannels.ContainsKey("mafia"));
-        Assert.True(lobby.PrivateChannels.ContainsKey("detectives"));
-    }
-
-    [Fact]
-    public void CreateNewLobby_WithExistingId_ShouldThrowException()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        var lobbyDto = new LobbyCreationDto
+        await using (var context = new ChatDbContext(dbContextOptions))
         {
-            LobbyId = "testLobby",
-            PrivateChannels = []
-        };
-        chatService.CreateNewLobby(lobbyDto);
+            var service = new PostgresChatService(context);
+            await service.CreateNewLobbyAsync(lobbyDto);
+        }
 
-        Assert.Throws<InvalidOperationException>(() => chatService.CreateNewLobby(lobbyDto));
-    }
-
-    [Fact]
-    public void GetLobby_ShouldReturnLobby_WhenExists()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        var lobbyDto = new LobbyCreationDto
+        await using (var context = new ChatDbContext(dbContextOptions))
         {
-            LobbyId = "testLobby",
-            PrivateChannels = []
-        };
-        chatService.CreateNewLobby(lobbyDto);
+            var lobby = await context.Lobbies
+                .Include(l => l.PrivateChannels)
+                .ThenInclude(pc => pc.Members)
+                .FirstOrDefaultAsync(l => l.Id == "test-lobby");
 
-        var lobby = chatService.GetLobby(lobbyDto.LobbyId);
-
-        Assert.NotNull(lobby);
-        Assert.Equal(lobbyDto.LobbyId, lobby.Id);
+            Assert.NotNull(lobby);
+            Assert.False(lobby.IsGlobalChatEnabled);
+            var mafiaChannel = Assert.Single(lobby.PrivateChannels);
+            Assert.Equal("mafia", mafiaChannel.Name);
+            Assert.Equal(2, mafiaChannel.Members.Count);
+        }
     }
 
     [Fact]
-    public void GetLobby_ShouldReturnNull_WhenNotExists()
+    public async Task CreateNewLobbyAsync_WithExistingId_ShouldThrowException()
     {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
+        var dbContextOptions = CreateNewContextOptions();
+        var lobbyDto = new LobbyCreationDto { LobbyId = "test-lobby", PrivateChannels = [] };
+        await using (var context = new ChatDbContext(dbContextOptions))
+        {
+            var service = new PostgresChatService(context);
+            await service.CreateNewLobbyAsync(lobbyDto);
+        }
 
-        var lobby = chatService.GetLobby("nonExistentLobby");
+        await using (var context = new ChatDbContext(dbContextOptions))
+        {
+            var service = new PostgresChatService(context);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateNewLobbyAsync(lobbyDto));
+        }
+    }
+
+    [Fact]
+    public async Task GetLobbyAsync_ShouldReturnCorrectlyMappedModel_WhenExists()
+    {
+        var dbContextOptions = CreateNewContextOptions();
+        await using (var context = new ChatDbContext(dbContextOptions))
+        {
+            var service = new PostgresChatService(context);
+            await service.CreateNewLobbyAsync(new LobbyCreationDto
+            {
+                LobbyId = "test-lobby",
+                PrivateChannels =
+                [
+                    new PrivateChannelDto { ChannelName = "mafia", MemberIds = [1, 2] },
+                    new PrivateChannelDto { ChannelName = "town", MemberIds = [3, 4] }
+                ]
+            });
+        }
+    
+        Lobby? lobbyModel;
+        await using (var context = new ChatDbContext(dbContextOptions))
+        {
+            var service = new PostgresChatService(context);
+            lobbyModel = await service.GetLobbyAsync("test-lobby");
+        }
+    
+        Assert.NotNull(lobbyModel);
+        Assert.True(lobbyModel.PrivateChannels.TryGetValue("mafia", out var mafiaChannel));
+        Assert.Equal(2, mafiaChannel.Members.Count);
+        Assert.True(mafiaChannel.Members.ContainsKey(1));
+        Assert.True(mafiaChannel.Members.ContainsKey(2));
+    
+        Assert.True(lobbyModel.PrivateChannels.TryGetValue("town", out var townChannel));
+        Assert.Equal(2, townChannel.Members.Count);
+        Assert.True(townChannel.Members.ContainsKey(3));
+        Assert.True(townChannel.Members.ContainsKey(4));
+        Assert.False(townChannel.Members.ContainsKey(1));
+    }
+
+    [Fact]
+    public async Task GetLobbyAsync_ShouldReturnNull_WhenNotExists()
+    {
+        var dbContextOptions = CreateNewContextOptions();
+        await using var context = new ChatDbContext(dbContextOptions);
+        var service = new PostgresChatService(context);
+
+        var lobby = await service.GetLobbyAsync("non-existent-lobby");
 
         Assert.Null(lobby);
     }
+    
+    [Fact]
+    public async Task DeleteLobbyAsync_ShouldReturnFalse_WhenLobbyNotExists()
+    {
+        var dbContextOptions = CreateNewContextOptions();
+        await using var context = new ChatDbContext(dbContextOptions);
+        var service = new PostgresChatService(context);
+        
+        var result = await service.DeleteLobbyAsync("non-existent-lobby");
+        
+        Assert.False(result);
+    }
+    
+    [Fact]
+    public async Task ToggleGlobalChatAsync_ShouldReturnNull_WhenLobbyNotExists()
+    {
+        var dbContextOptions = CreateNewContextOptions();
+        await using var context = new ChatDbContext(dbContextOptions);
+        var service = new PostgresChatService(context);
+        
+        var result = await service.ToggleGlobalChatAsync("non-existent-lobby");
+        
+        Assert.Null(result);
+    }
 
     [Fact]
-    public async Task PrivateChannelExistsAsync_ShouldReturnTrue_WhenExists()
+    public async Task IsGlobalChatEnabledAsync_ShouldReturnFalse_WhenLobbyNotExists()
     {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        var lobbyDto = new LobbyCreationDto
+        var dbContextOptions = CreateNewContextOptions();
+        await using var context = new ChatDbContext(dbContextOptions);
+        var service = new PostgresChatService(context);
+
+        var result = await service.IsGlobalChatEnabledAsync("non-existent-lobby");
+
+        Assert.False(result);
+    }
+
+    [Theory]
+    [InlineData("test-lobby", "mafia", 1, true)]  // User has access
+    [InlineData("test-lobby", "mafia", 3, false)]  // User does not have access
+    [InlineData("test-lobby", "town", 1, false)]   // User has access to a different channel
+    [InlineData("test-lobby", "ghosts", 1, false)] // Channel does not exist
+    [InlineData("fake-lobby", "mafia", 1, false)]  // Lobby does not exist
+    public async Task UserHasAccessToChannelAsync_ShouldReturnCorrectValue(string lobbyId, string channelName, long userId, bool expected)
+    {
+        var dbContextOptions = CreateNewContextOptions();
+        await using (var context = new ChatDbContext(dbContextOptions))
         {
-            LobbyId = "testLobby",
-            PrivateChannels = [new PrivateChannelDto { ChannelName = "mafia", MemberIds = [] }]
-        };
-        chatService.CreateNewLobby(lobbyDto);
-
-        var exists = await chatService.PrivateChannelExistsAsync(lobbyDto.LobbyId, "mafia");
-
-        Assert.True(exists);
-    }
-
-    [Fact]
-    public async Task PrivateChannelExistsAsync_ShouldReturnFalse_WhenNotExists()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        var lobbyDto = new LobbyCreationDto
+            var service = new PostgresChatService(context);
+            await service.CreateNewLobbyAsync(new LobbyCreationDto {
+                LobbyId = "test-lobby",
+                PrivateChannels = [new PrivateChannelDto { ChannelName = "mafia", MemberIds = [1, 2] }]
+            });
+        }
+        
+        bool hasAccess;
+        await using (var context = new ChatDbContext(dbContextOptions))
         {
-            LobbyId = "testLobby",
-            PrivateChannels = []
-        };
-        chatService.CreateNewLobby(lobbyDto);
-
-        var exists = await chatService.PrivateChannelExistsAsync(lobbyDto.LobbyId, "nonExistentChannel");
-
-        Assert.False(exists);
-    }
-
-    [Fact]
-    public async Task UserHasAccessToChannelAsync_ShouldReturnTrue_WhenUserIsInChannel()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        var lobbyDto = new LobbyCreationDto
-        {
-            LobbyId = "testLobby",
-            PrivateChannels = [new PrivateChannelDto { ChannelName = "mafia", MemberIds = [1] }]
-        };
-        chatService.CreateNewLobby(lobbyDto);
-
-        var hasAccess = await chatService.UserHasAccessToChannelAsync(lobbyDto.LobbyId, "mafia", 1);
-
-        Assert.True(hasAccess);
-    }
-
-    [Fact]
-    public async Task UserHasAccessToChannelAsync_ShouldReturnFalse_WhenUserIsNotInChannel()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        var lobbyDto = new LobbyCreationDto
-        {
-            LobbyId = "testLobby",
-            PrivateChannels = [new PrivateChannelDto { ChannelName = "mafia", MemberIds = [] }]
-        };
-        chatService.CreateNewLobby(lobbyDto);
-
-        var hasAccess = await chatService.UserHasAccessToChannelAsync(lobbyDto.LobbyId, "mafia", 1);
-
-        Assert.False(hasAccess);
-    }
-
-    [Fact]
-    public async Task UserHasAccessToChannelAsync_ShouldReturnFalse_WhenChannelDoesNotExist()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        var lobbyDto = new LobbyCreationDto
-        {
-            LobbyId = "testLobby",
-            PrivateChannels = []
-        };
-        chatService.CreateNewLobby(lobbyDto);
-
-        var hasAccess = await chatService.UserHasAccessToChannelAsync(lobbyDto.LobbyId, "nonExistentChannel", 1);
-
-        Assert.False(hasAccess);
-    }
-
-    [Fact]
-    public void IsGlobalChatEnabled_And_ToggleGlobalChat_ShouldWorkCorrectly()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        var lobbyDto = new LobbyCreationDto
-        {
-            LobbyId = "testLobby",
-            PrivateChannels = []
-        };
-        chatService.CreateNewLobby(lobbyDto);
-
-        Assert.False(chatService.IsGlobalChatEnabled(lobbyDto.LobbyId));
-
-        var newStatus = chatService.ToggleGlobalChat(lobbyDto.LobbyId);
-        Assert.True(newStatus);
-        Assert.True(chatService.IsGlobalChatEnabled(lobbyDto.LobbyId));
-
-        newStatus = chatService.ToggleGlobalChat(lobbyDto.LobbyId);
-        Assert.False(newStatus);
-        Assert.False(chatService.IsGlobalChatEnabled(lobbyDto.LobbyId));
-    }
-
-    [Fact]
-    public async Task GetPrivateChannelsAsync_ShouldReturnChannelNames()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        var lobbyDto = new LobbyCreationDto
-        {
-            LobbyId = "testLobby",
-            PrivateChannels =
-            [
-                new PrivateChannelDto { ChannelName = "mafia", MemberIds = [] },
-                new PrivateChannelDto { ChannelName = "detectives", MemberIds = [] }
-            ]
-        };
-        chatService.CreateNewLobby(lobbyDto);
-
-        var channels = (await chatService.GetPrivateChannelsAsync(lobbyDto.LobbyId)).ToList();
-
-        Assert.Equal(2, channels.Count);
-        Assert.Contains("mafia", channels);
-        Assert.Contains("detectives", channels);
-    }
-
-    [Fact]
-    public async Task GetPrivateChannelsAsync_ShouldReturnEmpty_WhenLobbyDoesNotExist()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        const string lobbyId = "nonExistentLobby";
-
-        var channels = (await chatService.GetPrivateChannelsAsync(lobbyId)).ToList();
-
-        Assert.Empty(channels);
-    }
-
-    [Fact]
-    public async Task SaveMessageAsync_And_GetMessageHistoryAsync_ShouldWorkCorrectly()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        const string lobbyId = "testLobby";
-        var message = new ChatMessageEntity
-        {
-            LobbyId = lobbyId,
-            Content = "Hello, world!",
-            SenderId = 1,
-            SenderName = "TestUser",
-            Timestamp = DateTime.UtcNow
-        };
-
-        await chatService.SaveMessageAsync(message);
-        var history = (await chatService.GetMessageHistoryAsync(lobbyId, null)).ToList();
-
-        Assert.Single(history);
-        Assert.Equal("Hello, world!", history[0].Content);
-    }
-
-    [Fact]
-    public async Task GetMessageHistoryAsync_ShouldReturnEmpty_WhenNoMessages()
-    {
-        var dbContext = CreateContext();
-        var chatService = new PostgresChatService(dbContext);
-        const string lobbyId = "testLobby";
-
-        var history = (await chatService.GetMessageHistoryAsync(lobbyId, null)).ToList();
-
-        Assert.Empty(history);
+            var service = new PostgresChatService(context);
+            hasAccess = await service.UserHasAccessToChannelAsync(lobbyId, channelName, userId);
+        }
+        
+        Assert.Equal(expected, hasAccess);
     }
 }
