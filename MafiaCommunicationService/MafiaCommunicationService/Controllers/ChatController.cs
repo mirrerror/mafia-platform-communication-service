@@ -88,7 +88,7 @@ public class ChatController(
             return NotFound(new ErrorResponse("LOBBY_NOT_FOUND", "Lobby does not exist"));
 
         var response = new GlobalChatStatusResponse { LobbyId = lobbyId, IsGlobalChatEnabled = newStatus.Value };
-        await hubContext.Clients.Group($"global_{lobbyId}").SendAsync("ToggleGlobalChat");
+        await hubContext.Clients.Group($"global_{lobbyId}").SendAsync("GlobalChatStatusChanged", new ApiResponse<GlobalChatStatusResponse>(response));
         return Ok(new ApiResponse<GlobalChatStatusResponse>(response));
     }
 
