@@ -1,14 +1,19 @@
 ﻿using System.Reflection;
 using MafiaCommunicationService.Middleware;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+using Moq;
 
 namespace MafiaCommunicationService.Tests;
 
 public class RequestThrottlingMiddlewareTests
 {
+    private readonly Mock<ILogger<RequestThrottlingMiddleware>> _loggerMock;
+    
     public RequestThrottlingMiddlewareTests()
     {
         Environment.SetEnvironmentVariable("REQUEST_TIMEOUT_SECONDS", "1");
+        _loggerMock = new Mock<ILogger<RequestThrottlingMiddleware>>();
     }
 
     [Fact]
@@ -16,9 +21,9 @@ public class RequestThrottlingMiddlewareTests
     {
         Environment.SetEnvironmentVariable("REQUEST_TIMEOUT_SECONDS", null);
         var semaphore = new SemaphoreSlim(1, 1);
-        var nextDelegate = new RequestDelegate((_) => Task.CompletedTask);
+        var nextDelegate = new RequestDelegate(_ => Task.CompletedTask);
 
-        var middleware = new RequestThrottlingMiddleware(nextDelegate, semaphore);
+        var middleware = new RequestThrottlingMiddleware(nextDelegate, semaphore, _loggerMock.Object);
 
         var timeoutField = typeof(RequestThrottlingMiddleware).GetField("_requestTimeoutMilliseconds", BindingFlags.NonPublic | BindingFlags.Instance);
         var timeoutValue = (int)timeoutField!.GetValue(middleware)!;
@@ -32,7 +37,7 @@ public class RequestThrottlingMiddlewareTests
         var semaphore = new SemaphoreSlim(1, 1);
         var nextDelegate = new RequestDelegate(_ => Task.CompletedTask);
 
-        var middleware = new RequestThrottlingMiddleware(nextDelegate, semaphore);
+        var middleware = new RequestThrottlingMiddleware(nextDelegate, semaphore, _loggerMock.Object);
 
         var timeoutField = typeof(RequestThrottlingMiddleware).GetField("_requestTimeoutMilliseconds", BindingFlags.NonPublic | BindingFlags.Instance);
         var timeoutValue = (int)timeoutField!.GetValue(middleware)!;
@@ -44,7 +49,7 @@ public class RequestThrottlingMiddlewareTests
     {
         Environment.SetEnvironmentVariable("REQUEST_TIMEOUT_SECONDS", "1");
         var semaphore = new SemaphoreSlim(1, 1);
-        var middleware = new RequestThrottlingMiddleware(next: _ => Task.CompletedTask, semaphore: semaphore);
+        var middleware = new RequestThrottlingMiddleware(next: _ => Task.CompletedTask, semaphore: semaphore, logger: _loggerMock.Object);
         var httpContext = new DefaultHttpContext();
 
         await middleware.InvokeAsync(httpContext);
@@ -59,7 +64,7 @@ public class RequestThrottlingMiddlewareTests
         var semaphore = new SemaphoreSlim(1, 1);
         await semaphore.WaitAsync();
 
-        var middleware = new RequestThrottlingMiddleware(next: _ => Task.CompletedTask, semaphore: semaphore);
+        var middleware = new RequestThrottlingMiddleware(next: _ => Task.CompletedTask, semaphore: semaphore, logger: _loggerMock.Object);
         var httpContext = new DefaultHttpContext();
 
         await middleware.InvokeAsync(httpContext);
@@ -78,7 +83,8 @@ public class RequestThrottlingMiddlewareTests
             {
                 await Task.Delay(2000, innerHttpContext.RequestAborted);
             },
-            semaphore: semaphore
+            semaphore: semaphore,
+            logger: _loggerMock.Object
         );
         var httpContext = new DefaultHttpContext();
 
@@ -94,7 +100,8 @@ public class RequestThrottlingMiddlewareTests
         var semaphore = new SemaphoreSlim(1, 1);
         var middleware = new RequestThrottlingMiddleware(
             next: _ => throw new InvalidOperationException("Test Exception"),
-            semaphore: semaphore
+            semaphore: semaphore,
+            logger: _loggerMock.Object
         );
         var httpContext = new DefaultHttpContext();
         
@@ -102,4 +109,3 @@ public class RequestThrottlingMiddlewareTests
         Assert.Equal(1, semaphore.CurrentCount);
     }
 }
-
