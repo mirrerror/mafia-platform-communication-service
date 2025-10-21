@@ -143,4 +143,76 @@ public class HeartbeatServiceTests : IDisposable
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Never);
     }
+    
+    [Fact]
+    public async Task ExecuteAsync_HandlesUnhandledError_InLoop()
+    {
+        using var cts = new CancellationTokenSource();
+        
+        var serviceWithNullClient = new HeartbeatService(null!, _mockLogger.Object); 
+
+        var executeTask = serviceWithNullClient.StartAsync(cts.Token);
+        await Task.Delay(TimeSpan.FromSeconds(10.5), cts.Token);
+        await cts.CancelAsync();
+
+        try { await executeTask; }
+        catch (OperationCanceledException) { }
+
+        _mockLogger.Verify(
+            log => log.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("An unhandled error occurred in the heartbeat service loop.")),
+                It.IsAny<NullReferenceException>(), 
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+    
+    [Fact]
+    public async Task ExecuteAsync_Stops_When_CancellationIsRequested()
+    {
+        var mockRegistryClient = new Mock<ServiceRegistryClient>(
+            Mock.Of<IHttpClientFactory>(), 
+            Mock.Of<ILogger<ServiceRegistryClient>>());
+            
+        var mockLogger = new Mock<ILogger<HeartbeatService>>();
+        var cts = new CancellationTokenSource();
+
+        var loopEnteredTcs = new TaskCompletionSource<bool>();
+    
+        mockRegistryClient.Setup(x => x.SendHeartbeatAsync())
+            .Returns(Task.CompletedTask)
+            .Callback(() => loopEnteredTcs.TrySetResult(true)); 
+
+        var service = new HeartbeatService(mockRegistryClient.Object, mockLogger.Object);
+
+        var serviceTask = service.StartAsync(cts.Token);
+
+        var completedTask = await Task.WhenAny(serviceTask, loopEnteredTcs.Task, Task.Delay(TimeSpan.FromSeconds(12), cts.Token));
+    
+        if (completedTask == serviceTask)
+        {
+            await serviceTask;
+        }
+    
+        await cts.CancelAsync();
+
+        try
+        {
+            await serviceTask;
+        }
+        catch (OperationCanceledException)
+        {
+            // This is expected when a BackgroundService is stopped
+        }
+
+        mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Heartbeat service stopping.")),
+                null,
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
 }
