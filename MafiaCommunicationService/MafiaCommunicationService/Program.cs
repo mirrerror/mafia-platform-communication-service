@@ -7,10 +7,24 @@ using MafiaCommunicationService.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 
 Env.Load(options: LoadOptions.TraversePath());
 
+var logPath = Environment.GetEnvironmentVariable("LOG_FILE_PATH") ?? "logs/service.log";
+
 var builder = WebApplication.CreateBuilder(args);
+
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration)
+    .WriteTo.File(logPath,
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 7,
+        shared: true,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}")
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 var maxConcurrentRequestsStr = Environment.GetEnvironmentVariable("MAX_CONCURRENT_REQUESTS") ?? "100";
 if (!int.TryParse(maxConcurrentRequestsStr, out var maxConcurrentRequests))
@@ -57,6 +71,8 @@ var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 var registryClient = app.Services.GetRequiredService<ServiceRegistryClient>();
 
+app.UseSerilogRequestLogging();
+
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -65,7 +81,9 @@ using (var scope = app.Services.CreateScope())
         var dbContext = services.GetRequiredService<ChatDbContext>();
         if (dbContext.Database.IsRelational())
         {
+            logger.LogInformation("Attempting to migrate database...");
             await dbContext.Database.MigrateAsync();
+            logger.LogInformation("Database migration completed successfully.");
         }
     }
     catch (Exception ex)
@@ -93,5 +111,18 @@ app.UseMiddleware<RequestThrottlingMiddleware>();
 
 app.MapControllers();
 app.MapHub<ChatHub>("/chathub");
+
+try
+{
+    var logDir = Path.GetDirectoryName(logPath);
+    if (!string.IsNullOrEmpty(logDir) && !Directory.Exists(logDir))
+    {
+        Directory.CreateDirectory(logDir);
+    }
+}
+catch (Exception ex)
+{
+    logger.LogError(ex, "Failed to create log directory at: {LogPath}", logPath);
+}
 
 app.Run();

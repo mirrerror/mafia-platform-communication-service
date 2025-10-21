@@ -6,6 +6,12 @@ EXPOSE 8080
 # Create a non-root user and group for better security
 RUN addgroup --system --gid 1000 appgroup && \
     adduser --system --uid 1000 --ingroup appgroup appuser
+
+# Create the log directory and set correct permissions
+# This ensures the non-root user can write logs
+RUN mkdir -p /app/logs && \
+    chown -R appuser:appgroup /app/logs
+
 USER appuser
 
 # Stage 2: Build the application

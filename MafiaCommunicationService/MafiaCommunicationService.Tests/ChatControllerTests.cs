@@ -5,6 +5,8 @@ using MafiaCommunicationService.Controllers;
 using MafiaCommunicationService.Hubs;
 using MafiaCommunicationService.Models;
 using MafiaCommunicationService.Services;
+using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Http;
 
 namespace MafiaCommunicationService.Tests;
 
@@ -12,13 +14,22 @@ public class ChatControllerTests
 {
     private readonly Mock<IHubContext<ChatHub>> _hubContextMock;
     private readonly Mock<IChatService> _chatServiceMock;
+    private readonly Mock<ILogger<ChatController>> _loggerMock;
     private readonly ChatController _controller;
 
     public ChatControllerTests()
     {
         _hubContextMock = new Mock<IHubContext<ChatHub>>();
         _chatServiceMock = new Mock<IChatService>();
-        _controller = new ChatController(_hubContextMock.Object, _chatServiceMock.Object);
+        _loggerMock = new Mock<ILogger<ChatController>>();
+        
+        _controller = new ChatController(_hubContextMock.Object, _chatServiceMock.Object, _loggerMock.Object)
+            {
+                ControllerContext = new ControllerContext
+                {
+                    HttpContext = new DefaultHttpContext()
+                }
+            };
 
         var mockClients = new Mock<IHubClients>();
         var mockGroup = new Mock<IClientProxy>();
@@ -71,7 +82,7 @@ public class ChatControllerTests
 
         Assert.IsType<BadRequestObjectResult>(result);
     }
-    
+
     [Fact]
     public async Task DeleteLobby_LobbyExists_ReturnsOk()
     {
@@ -92,6 +103,73 @@ public class ChatControllerTests
 
         var result = await _controller.DeleteLobby(lobbyId);
 
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task SendGlobalMessage_LobbyNotFound_ReturnsNotFound()
+    {
+        const string lobbyId = "fake-lobby";
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync((Lobby)null!);
+        
+        var result = await _controller.SendGlobalMessage(lobbyId, new ChatMessage());
+        
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+    
+    [Fact]
+    public async Task SendGlobalMessage_ChatDisabled_ReturnsBadRequest()
+    {
+        const string lobbyId = "test-lobby";
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync(new Lobby { Id = lobbyId });
+        _chatServiceMock.Setup(s => s.IsGlobalChatEnabledAsync(lobbyId)).ReturnsAsync(false);
+        
+        var result = await _controller.SendGlobalMessage(lobbyId, new ChatMessage());
+        
+        Assert.IsType<BadRequestObjectResult>(result);
+    }
+    
+    [Fact]
+    public async Task GetGlobalChatHistory_LobbyNotFound_ReturnsNotFound()
+    {
+        const string lobbyId = "fake-lobby";
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync((Lobby)null!);
+        
+        var result = await _controller.GetGlobalChatHistory(lobbyId);
+        
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+    
+    [Fact]
+    public async Task ToggleGlobalChat_LobbyNotFound_ReturnsNotFound()
+    {
+        const string lobbyId = "fake-lobby";
+        _chatServiceMock.Setup(s => s.ToggleGlobalChatAsync(lobbyId)).ReturnsAsync((bool?)null);
+        
+        var result = await _controller.ToggleGlobalChat(lobbyId);
+        
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+    
+    [Fact]
+    public async Task GetGlobalChatStatus_LobbyNotFound_ReturnsNotFound()
+    {
+        const string lobbyId = "fake-lobby";
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync((Lobby)null!);
+        
+        var result = await _controller.GetGlobalChatStatus(lobbyId);
+        
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+    
+    [Fact]
+    public async Task SendPrivateMessage_LobbyNotFound_ReturnsNotFound()
+    {
+        const string lobbyId = "fake-lobby";
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync((Lobby)null!);
+        
+        var result = await _controller.SendPrivateMessage(lobbyId, "test-channel", new ChatMessage());
+        
         Assert.IsType<NotFoundObjectResult>(result);
     }
 
@@ -123,6 +201,28 @@ public class ChatControllerTests
 
         var statusCodeResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(403, statusCodeResult.StatusCode);
+    }
+    
+    [Fact]
+    public async Task GetPrivateChatHistory_LobbyNotFound_ReturnsNotFound()
+    {
+        const string lobbyId = "fake-lobby";
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync((Lobby)null!);
+        
+        var result = await _controller.GetPrivateChatHistory(lobbyId, "test-channel", 1);
+        
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+    
+    [Fact]
+    public async Task GetPrivateChannels_LobbyNotFound_ReturnsNotFound()
+    {
+        const string lobbyId = "fake-lobby";
+        _chatServiceMock.Setup(s => s.GetLobbyAsync(lobbyId)).ReturnsAsync((Lobby)null!);
+        
+        var result = await _controller.GetPrivateChannels(lobbyId);
+        
+        Assert.IsType<NotFoundObjectResult>(result);
     }
 
     [Fact]

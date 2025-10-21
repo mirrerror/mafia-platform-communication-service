@@ -92,7 +92,7 @@ public class ServiceRegistryClient
         }
     }
 
-    public async Task SendHeartbeatAsync()
+    public virtual async Task SendHeartbeatAsync()
     {
         if (string.IsNullOrEmpty(InstanceId) || string.IsNullOrEmpty(_discoveryUrl))
         {
