@@ -7,6 +7,7 @@ using MafiaCommunicationService.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Prometheus;
 using Serilog;
 
 Env.Load(options: LoadOptions.TraversePath());
@@ -66,6 +67,9 @@ builder.Services.AddDbContext<ChatDbContext>(options =>
 
 builder.Services.AddScoped<IChatService, PostgresChatService>();
 
+builder.Services.AddHealthChecks()
+    .AddNpgSql(connectionString ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found."));
+
 var app = builder.Build();
 
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
@@ -107,10 +111,15 @@ app.Lifetime.ApplicationStopping.Register(async void () =>
 app.UseCors("CorsPolicy");
 app.UseRouting();
 
+app.UseMetricServer();
+app.UseHttpMetrics();
+
 app.UseMiddleware<RequestThrottlingMiddleware>();
 
 app.MapControllers();
 app.MapHub<ChatHub>("/chathub");
+
+app.MapHealthChecks("/healthz");
 
 try
 {
