@@ -42,7 +42,7 @@ public class ServiceRegistryClientTests : IDisposable
     {
         Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", null);
         Environment.SetEnvironmentVariable("SERVICE_ID", null);
-        Environment.SetEnvironmentVariable("SERVICE_HOST", null);
+        Environment.SetEnvironmentVariable("HOSTNAME", null);
         Environment.SetEnvironmentVariable("SERVICE_PORT", null);
     }
 
@@ -79,7 +79,6 @@ public class ServiceRegistryClientTests : IDisposable
     public void Constructor_UsesDefaults_WhenEnvVarsNotSet()
     {
         var client = CreateClient();
-
         VerifyLog(_mockLogger, LogLevel.Warning, "SERVICE_PORT not found or invalid", Times.Once());
     }
 
@@ -90,13 +89,15 @@ public class ServiceRegistryClientTests : IDisposable
         const string expectedHost = "comm.example.com";
         const string expectedPortStr = "8080";
         Environment.SetEnvironmentVariable("SERVICE_ID", expectedServiceId);
-        Environment.SetEnvironmentVariable("SERVICE_HOST", expectedHost);
+        Environment.SetEnvironmentVariable("HOSTNAME", expectedHost);
         Environment.SetEnvironmentVariable("SERVICE_PORT", expectedPortStr);
         Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
 
         var client = CreateClient();
 
         VerifyLog(_mockLogger, LogLevel.Warning, "SERVICE_PORT not found or invalid", Times.Never());
+        
+        VerifyLog(_mockLogger, LogLevel.Information, "Resolved hostname from HOSTNAME", Times.Once());
     }
 
 
@@ -156,7 +157,7 @@ public class ServiceRegistryClientTests : IDisposable
         const int expectedPort = 9999;
         Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
         Environment.SetEnvironmentVariable("SERVICE_ID", expectedServiceId);
-        Environment.SetEnvironmentVariable("SERVICE_HOST", expectedHost);
+        Environment.SetEnvironmentVariable("HOSTNAME", expectedHost);
         Environment.SetEnvironmentVariable("SERVICE_PORT", expectedPort.ToString());
 
         var client = CreateClient();
@@ -227,9 +228,10 @@ public class ServiceRegistryClientTests : IDisposable
         Assert.Equal(DefaultServiceId, serviceIdElement.GetString());
         Assert.True(root.TryGetProperty("instanceId", out var instanceIdElement));
         Assert.Equal(client.InstanceId, instanceIdElement.GetString());
-
+        
         Assert.True(root.TryGetProperty("host", out var hostElement));
-        Assert.Equal(DefaultHost, hostElement.GetString());
+        Assert.NotNull(hostElement.GetString());
+        Assert.False(string.IsNullOrEmpty(hostElement.GetString()));
 
         Assert.True(root.TryGetProperty("port", out var portElement));
         Assert.Equal(DefaultPort, portElement.GetInt32());
@@ -615,13 +617,21 @@ public class ServiceRegistryClientTests : IDisposable
                 ItExpr.IsAny<CancellationToken>()
             )
             .ThrowsAsync(testException);
+        
+        _mockHttpMessageHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(m => m.RequestUri == registerUri),
+                ItExpr.IsAny<CancellationToken>()
+            )
+            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
 
         await client.SendHeartbeatAsync();
 
         VerifyLogException(_mockLogger, LogLevel.Error, "Error occurred while sending heartbeat", testException, Times.Once());
         
         _mockHttpMessageHandler.Protected()
-             .Verify("SendAsync", Times.Once(),
+             .Verify("SendAsync", Times.Exactly(2), 
                  ItExpr.Is<HttpRequestMessage>(m => m.Method == HttpMethod.Post && m.RequestUri == registerUri),
                  ItExpr.IsAny<CancellationToken>());
     }
