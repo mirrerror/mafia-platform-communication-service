@@ -1,4 +1,6 @@
-﻿namespace MafiaCommunicationService.Services;
+using System.Net;
+
+namespace MafiaCommunicationService.Services;
 
 public class ServiceRegistryClient
 {
@@ -18,12 +20,36 @@ public class ServiceRegistryClient
 
         _discoveryUrl = Environment.GetEnvironmentVariable("DISCOVERY_SERVICE_URL");
         _serviceId = Environment.GetEnvironmentVariable("SERVICE_ID") ?? "mafia-communication-service";
-        _serviceHost = Environment.GetEnvironmentVariable("SERVICE_HOST") ?? "localhost";
+        
+        _serviceHost = "localhost";
+        var hostnameFromEnv = Environment.GetEnvironmentVariable("HOSTNAME");
+
+        if (!string.IsNullOrEmpty(hostnameFromEnv))
+        {
+            _serviceHost = hostnameFromEnv;
+             _logger.LogInformation("Resolved hostname from HOSTNAME environment variable: {Hostname}", _serviceHost);
+        }
+        else
+        {
+            try
+            {
+                _serviceHost = Dns.GetHostName();
+                _logger.LogInformation("Resolved hostname using DNS: {Hostname}", _serviceHost);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to resolve hostname using DNS. Defaulting to 'localhost'.");
+            }
+        }
             
         var portStr = Environment.GetEnvironmentVariable("SERVICE_PORT");
-        if (int.TryParse(portStr, out _servicePort)) return;
-        _servicePort = 5000; 
-        _logger.LogWarning("SERVICE_PORT not found or invalid in .env. Defaulting to 5000.");
+        if (!int.TryParse(portStr, out _servicePort))
+        {
+            _servicePort = 5000; 
+            _logger.LogWarning("SERVICE_PORT not found or invalid in .env. Defaulting to {DefaultPort}.", _servicePort);
+        }
+        
+        _logger.LogInformation("ServiceRegistryClient configured with ServiceId: {ServiceId}, Host: {ServiceHost}, Port: {ServicePort}", _serviceId, _serviceHost, _servicePort);
     }
 
     public async Task RegisterAsync()
@@ -112,12 +138,15 @@ public class ServiceRegistryClient
             else
             {
                 _logger.LogWarning("Heartbeat failed. Status code: {ResponseStatusCode}. Attempting to re-register...", response.StatusCode);
+                InstanceId = null;
                 await RegisterAsync();
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error occurred while sending heartbeat.");
+            InstanceId = null;
+            await RegisterAsync();
         }
     }
 }
