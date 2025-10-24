@@ -79,7 +79,6 @@ public class ServiceRegistryClientTests : IDisposable
     public void Constructor_UsesDefaults_WhenEnvVarsNotSet()
     {
         var client = CreateClient();
-
         VerifyLog(_mockLogger, LogLevel.Warning, "SERVICE_PORT not found or invalid", Times.Once());
     }
 
@@ -97,6 +96,8 @@ public class ServiceRegistryClientTests : IDisposable
         var client = CreateClient();
 
         VerifyLog(_mockLogger, LogLevel.Warning, "SERVICE_PORT not found or invalid", Times.Never());
+        
+        VerifyLog(_mockLogger, LogLevel.Information, "Resolved hostname from SERVICE_HOST", Times.Once());
     }
 
 
@@ -227,9 +228,10 @@ public class ServiceRegistryClientTests : IDisposable
         Assert.Equal(DefaultServiceId, serviceIdElement.GetString());
         Assert.True(root.TryGetProperty("instanceId", out var instanceIdElement));
         Assert.Equal(client.InstanceId, instanceIdElement.GetString());
-
+        
         Assert.True(root.TryGetProperty("host", out var hostElement));
-        Assert.Equal(DefaultHost, hostElement.GetString());
+        Assert.NotNull(hostElement.GetString());
+        Assert.False(string.IsNullOrEmpty(hostElement.GetString()));
 
         Assert.True(root.TryGetProperty("port", out var portElement));
         Assert.Equal(DefaultPort, portElement.GetInt32());
@@ -615,13 +617,21 @@ public class ServiceRegistryClientTests : IDisposable
                 ItExpr.IsAny<CancellationToken>()
             )
             .ThrowsAsync(testException);
+        
+        _mockHttpMessageHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.Is<HttpRequestMessage>(m => m.RequestUri == registerUri),
+                ItExpr.IsAny<CancellationToken>()
+            )
+            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
 
         await client.SendHeartbeatAsync();
 
         VerifyLogException(_mockLogger, LogLevel.Error, "Error occurred while sending heartbeat", testException, Times.Once());
         
         _mockHttpMessageHandler.Protected()
-             .Verify("SendAsync", Times.Once(),
+             .Verify("SendAsync", Times.Exactly(2), 
                  ItExpr.Is<HttpRequestMessage>(m => m.Method == HttpMethod.Post && m.RequestUri == registerUri),
                  ItExpr.IsAny<CancellationToken>());
     }
