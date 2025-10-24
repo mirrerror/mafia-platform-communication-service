@@ -42,7 +42,7 @@ public class ServiceRegistryClientTests : IDisposable
     {
         Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", null);
         Environment.SetEnvironmentVariable("SERVICE_ID", null);
-        Environment.SetEnvironmentVariable("SERVICE_HOST", null);
+        Environment.SetEnvironmentVariable("HOSTNAME", null);
         Environment.SetEnvironmentVariable("SERVICE_PORT", null);
     }
 
@@ -89,7 +89,7 @@ public class ServiceRegistryClientTests : IDisposable
         const string expectedHost = "comm.example.com";
         const string expectedPortStr = "8080";
         Environment.SetEnvironmentVariable("SERVICE_ID", expectedServiceId);
-        Environment.SetEnvironmentVariable("SERVICE_HOST", expectedHost);
+        Environment.SetEnvironmentVariable("HOSTNAME", expectedHost);
         Environment.SetEnvironmentVariable("SERVICE_PORT", expectedPortStr);
         Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
 
@@ -97,7 +97,7 @@ public class ServiceRegistryClientTests : IDisposable
 
         VerifyLog(_mockLogger, LogLevel.Warning, "SERVICE_PORT not found or invalid", Times.Never());
         
-        VerifyLog(_mockLogger, LogLevel.Information, "Resolved hostname from SERVICE_HOST", Times.Once());
+        VerifyLog(_mockLogger, LogLevel.Information, "Resolved hostname from HOSTNAME", Times.Once());
     }
 
 
@@ -157,7 +157,7 @@ public class ServiceRegistryClientTests : IDisposable
         const int expectedPort = 9999;
         Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
         Environment.SetEnvironmentVariable("SERVICE_ID", expectedServiceId);
-        Environment.SetEnvironmentVariable("SERVICE_HOST", expectedHost);
+        Environment.SetEnvironmentVariable("HOSTNAME", expectedHost);
         Environment.SetEnvironmentVariable("SERVICE_PORT", expectedPort.ToString());
 
         var client = CreateClient();

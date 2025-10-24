@@ -22,12 +22,12 @@ public class ServiceRegistryClient
         _serviceId = Environment.GetEnvironmentVariable("SERVICE_ID") ?? "mafia-communication-service";
         
         _serviceHost = "localhost";
-        var hostnameFromEnv = Environment.GetEnvironmentVariable("SERVICE_HOST");
+        var hostnameFromEnv = Environment.GetEnvironmentVariable("HOSTNAME");
 
         if (!string.IsNullOrEmpty(hostnameFromEnv))
         {
             _serviceHost = hostnameFromEnv;
-             _logger.LogInformation("Resolved hostname from SERVICE_HOST environment variable: {Hostname}", _serviceHost);
+             _logger.LogInformation("Resolved hostname from HOSTNAME environment variable: {Hostname}", _serviceHost);
         }
         else
         {
