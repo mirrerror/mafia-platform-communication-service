@@ -1,124 +1,101 @@
+using Grpc.Core;
+using MafiaCommunicationService.Protos;
 using System.Net;
 
 namespace MafiaCommunicationService.Services;
 
 public class ServiceRegistryClient
 {
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<ServiceRegistryClient> _logger;
-    private readonly string? _discoveryUrl;
+    private readonly RegistrationService.RegistrationServiceClient? _grpcClient;
+
     private readonly string _serviceId;
     private readonly string _serviceHost;
-    private readonly int _servicePort;
+    private readonly int _restPort;
+    private readonly int _rpcPort;
+    private readonly string _topicName;
 
     public string? InstanceId { get; private set; }
 
-    public ServiceRegistryClient(IHttpClientFactory httpClientFactory, ILogger<ServiceRegistryClient> logger)
+    public ServiceRegistryClient(
+        ILogger<ServiceRegistryClient> logger, 
+        IServiceProvider serviceProvider)
     {
-        _httpClientFactory = httpClientFactory;
         _logger = logger;
-
-        _discoveryUrl = Environment.GetEnvironmentVariable("DISCOVERY_SERVICE_URL");
-        _serviceId = Environment.GetEnvironmentVariable("SERVICE_ID") ?? "mafia-communication-service";
         
+        _grpcClient = serviceProvider.GetService<RegistrationService.RegistrationServiceClient>();
+
+        _serviceId = Environment.GetEnvironmentVariable("SERVICE_ID") ?? "mafia-communication-service";
+        _topicName = Environment.GetEnvironmentVariable("SERVICE_TOPIC") ?? "chat-events";
+
         _serviceHost = "localhost";
         var hostnameFromEnv = Environment.GetEnvironmentVariable("HOSTNAME");
 
         if (!string.IsNullOrEmpty(hostnameFromEnv))
         {
             _serviceHost = hostnameFromEnv;
-             _logger.LogInformation("Resolved hostname from HOSTNAME environment variable: {Hostname}", _serviceHost);
+             _logger.LogInformation("Resolved hostname from env: {Hostname}", _serviceHost);
         }
         else
         {
-            try
-            {
-                _serviceHost = Dns.GetHostName();
-                _logger.LogInformation("Resolved hostname using DNS: {Hostname}", _serviceHost);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to resolve hostname using DNS. Defaulting to 'localhost'.");
-            }
+            try { _serviceHost = Dns.GetHostName(); }
+            catch { /* Ignore */ }
         }
             
         var portStr = Environment.GetEnvironmentVariable("SERVICE_PORT");
-        if (!int.TryParse(portStr, out _servicePort))
-        {
-            _servicePort = 5000; 
-            _logger.LogWarning("SERVICE_PORT not found or invalid in .env. Defaulting to {DefaultPort}.", _servicePort);
-        }
+        if (!int.TryParse(portStr, out _restPort)) _restPort = 8080;
+
+        var rpcPortStr = Environment.GetEnvironmentVariable("RPC_PORT");
+        if (!int.TryParse(rpcPortStr, out _rpcPort)) _rpcPort = 6000;
         
-        _logger.LogInformation("ServiceRegistryClient configured with ServiceId: {ServiceId}, Host: {ServiceHost}, Port: {ServicePort}", _serviceId, _serviceHost, _servicePort);
+        _logger.LogInformation("ServiceRegistryClient initialized. ServiceId: {Id}", _serviceId);
     }
 
     public async Task RegisterAsync()
     {
-        if (string.IsNullOrEmpty(_discoveryUrl))
+        if (_grpcClient == null)
         {
-            _logger.LogWarning("DISCOVERY_SERVICE_URL is not set. Skipping service registration.");
+            _logger.LogWarning("gRPC Client is null (DISCOVERY_SERVICE_GRPC_URL might be missing). Skipping registration.");
             return;
         }
 
-        InstanceId = Guid.NewGuid().ToString();
-        
-        var requestMetadata = new Dictionary<string, string>
-        {
-            { "metricsPath", "/metrics" },
-            { "loadMetricName", "system_runtime_cpu_usage" }
-        };
-        
-        var payload = new
-        {
-            serviceId = _serviceId,
-            instanceId = InstanceId,
-            host = _serviceHost,
-            port = _servicePort,
-            metadata = requestMetadata
-        };
-
         try
         {
-            var httpClient = _httpClientFactory.CreateClient();
-            var response = await httpClient.PostAsJsonAsync($"{_discoveryUrl}/api/discovery/register", payload);
+            var request = new RegisterRequest
+            {
+                ServiceId = _serviceId,
+                Host = _serviceHost,
+                RestPort = _restPort,
+                RpcPort = _rpcPort,
+                TopicName = _topicName
+            };
 
-            if (response.IsSuccessStatusCode)
-            {
-                _logger.LogInformation("Service registered with discovery. Instance ID: {InstanceId}", InstanceId);
-            }
-            else
-            {
-                InstanceId = null;
-                _logger.LogError("Failed to register service. Status: {ResponseStatusCode}. Body: {ReadAsStringAsync}", response.StatusCode, await response.Content.ReadAsStringAsync());
-            }
+            _logger.LogInformation("Sending gRPC Registration...");
+            var response = await _grpcClient.RegisterAsync(request);
+
+            InstanceId = response.InstanceId;
+            _logger.LogInformation("Service registered! Instance ID: {InstanceId}", InstanceId);
+        }
+        catch (RpcException ex)
+        {
+            InstanceId = null;
+            _logger.LogError(ex, "gRPC Error during service registration: {Status}", ex.Status);
         }
         catch (Exception ex)
         {
             InstanceId = null;
-            _logger.LogError(ex, "Error occurred during service registration.");
+            _logger.LogError(ex, "Unexpected error during service registration.");
         }
     }
 
     public async Task DeregisterAsync()
     {
-        if (string.IsNullOrEmpty(InstanceId) || string.IsNullOrEmpty(_discoveryUrl))
-        {
-            return;
-        }
+        if (string.IsNullOrEmpty(InstanceId) || _grpcClient == null) return;
 
         try
         {
-            var httpClient = _httpClientFactory.CreateClient();
-            var response = await httpClient.DeleteAsync($"{_discoveryUrl}/api/discovery/deregister/{InstanceId}");
-
-            if (response.IsSuccessStatusCode)
-            {
-                _logger.LogInformation("Service deregistered from discovery.");
-            }
-            else
-            {
-                _logger.LogError("Failed to deregister service. Status code: {ResponseStatusCode}", response.StatusCode);
-            }
+            var response = await _grpcClient.DeregisterAsync(new DeregisterRequest { InstanceId = InstanceId });
+            _logger.LogInformation("Service deregistered. Status: {Status}", response.Status);
         }
         catch (Exception ex)
         {

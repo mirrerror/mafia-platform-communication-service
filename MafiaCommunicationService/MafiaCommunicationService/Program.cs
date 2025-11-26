@@ -4,17 +4,39 @@ using MafiaCommunicationService.Filters;
 using MafiaCommunicationService.Hubs;
 using MafiaCommunicationService.Middleware;
 using MafiaCommunicationService.Services;
+using MafiaCommunicationService.Protos; 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Prometheus;
 using Serilog;
+using System.Net;
 
 Env.Load(options: LoadOptions.TraversePath());
 
 var logPath = Environment.GetEnvironmentVariable("LOG_FILE_PATH") ?? "logs/service.log";
 
 var builder = WebApplication.CreateBuilder(args);
+
+var restPortStr = Environment.GetEnvironmentVariable("SERVICE_PORT") ?? "8080";
+if (!int.TryParse(restPortStr, out var restPort)) restPort = 8080;
+
+var rpcPortStr = Environment.GetEnvironmentVariable("RPC_PORT") ?? "6000";
+if (!int.TryParse(rpcPortStr, out var rpcPort)) rpcPort = 6000;
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Listen(IPAddress.Any, restPort, listenOptions =>
+    {
+        listenOptions.Protocols = HttpProtocols.Http1;
+    });
+
+    options.Listen(IPAddress.Any, rpcPort, listenOptions =>
+    {
+        listenOptions.Protocols = HttpProtocols.Http2;
+    });
+});
 
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
@@ -45,6 +67,27 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddHttpClient();
+
+builder.Services.AddGrpc();
+builder.Services.AddGrpcReflection();
+
+var discoveryUrl = Environment.GetEnvironmentVariable("DISCOVERY_SERVICE_GRPC_URL");
+if (!string.IsNullOrEmpty(discoveryUrl))
+{
+    builder.Services.AddGrpcClient<RegistrationService.RegistrationServiceClient>(o =>
+    {
+        o.Address = new Uri(discoveryUrl);
+    })
+    .ConfigureChannel(o =>
+    {
+        o.HttpHandler = new SocketsHttpHandler
+        {
+            EnableMultipleHttp2Connections = true,
+            KeepAlivePingDelay = TimeSpan.FromSeconds(60),
+            KeepAlivePingTimeout = TimeSpan.FromSeconds(30)
+        };
+    });
+}
 
 builder.Services.AddSingleton<ServiceRegistryClient>();
 
@@ -117,6 +160,9 @@ app.UseMiddleware<RequestThrottlingMiddleware>();
 
 app.MapControllers();
 app.MapHub<ChatHub>("/chathub");
+
+app.MapGrpcService<GrpcSubscriberService>();
+app.MapGrpcReflectionService();
 
 app.MapHealthChecks("/healthz");
 

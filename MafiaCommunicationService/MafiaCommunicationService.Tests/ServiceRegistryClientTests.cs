@@ -1,33 +1,26 @@
-﻿using System.Net;
-using System.Text.Json;
+﻿using Grpc.Core;
+using MafiaCommunicationService.Protos;
 using MafiaCommunicationService.Services;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Moq.Protected;
 
 namespace MafiaCommunicationService.Tests;
 
 public class ServiceRegistryClientTests : IDisposable
 {
-    private readonly Mock<IHttpClientFactory> _mockHttpClientFactory;
     private readonly Mock<ILogger<ServiceRegistryClient>> _mockLogger;
-    private readonly Mock<HttpMessageHandler> _mockHttpMessageHandler;
-    private readonly HttpClient _httpClient;
-
-    private const string TestDiscoveryUrl = "http://test-discovery-service.com";
-    private const string DefaultServiceId = "mafia-communication-service";
-    private const string DefaultHost = "localhost";
-    private const int DefaultPort = 5000;
-
+    private readonly Mock<RegistrationService.RegistrationServiceClient> _mockGrpcClient;
+    private readonly Mock<IServiceProvider> _mockServiceProvider;
 
     public ServiceRegistryClientTests()
     {
-        _mockHttpClientFactory = new Mock<IHttpClientFactory>();
         _mockLogger = new Mock<ILogger<ServiceRegistryClient>>();
-        _mockHttpMessageHandler = new Mock<HttpMessageHandler>();
+        _mockGrpcClient = new Mock<RegistrationService.RegistrationServiceClient>();
+        _mockServiceProvider = new Mock<IServiceProvider>();
 
-        _httpClient = new HttpClient(_mockHttpMessageHandler.Object);
-        _mockHttpClientFactory.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(_httpClient);
+        _mockServiceProvider
+            .Setup(x => x.GetService(typeof(RegistrationService.RegistrationServiceClient)))
+            .Returns(_mockGrpcClient.Object);
 
         ClearEnvVars();
     }
@@ -40,400 +33,122 @@ public class ServiceRegistryClientTests : IDisposable
 
     private static void ClearEnvVars()
     {
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", null);
         Environment.SetEnvironmentVariable("SERVICE_ID", null);
         Environment.SetEnvironmentVariable("HOSTNAME", null);
         Environment.SetEnvironmentVariable("SERVICE_PORT", null);
+        Environment.SetEnvironmentVariable("RPC_PORT", null);
     }
 
     private ServiceRegistryClient CreateClient()
     {
-        return new ServiceRegistryClient(_mockHttpClientFactory.Object, _mockLogger.Object);
+        return new ServiceRegistryClient(_mockLogger.Object, _mockServiceProvider.Object);
     }
 
-    private void VerifyLog<T>(Mock<ILogger<T>> loggerMock, LogLevel level, string messageContains, Times times) where T : class
+    [Fact]
+    public async Task RegisterAsync_Skips_WhenClientIsNull()
     {
-        loggerMock.Verify(
-            log => log.Log(
-                level,
+        _mockServiceProvider
+            .Setup(x => x.GetService(typeof(RegistrationService.RegistrationServiceClient)))
+            .Returns(null!);
+
+        var client = CreateClient();
+
+        await client.RegisterAsync();
+
+        Assert.Null(client.InstanceId);
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Warning,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains(messageContains)),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("gRPC Client is null")),
                 null,
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            times);
+            Times.Once);
     }
 
-    private void VerifyLogException<T>(Mock<ILogger<T>> loggerMock, LogLevel level, string messageContains, Exception expectedException, Times times) where T : class
+    [Fact]
+    public async Task RegisterAsync_Succeeds_WhenGrpcCallIsSuccessful()
     {
-        loggerMock.Verify(
-            log => log.Log(
-                level,
+        const string expectedInstanceId = "test-instance-123";
+        var client = CreateClient();
+
+        var grpcResponse = new RegisterResponse
+        {
+            InstanceId = expectedInstanceId,
+            Status = "OK",
+            ServiceId = "test-service"
+        };
+
+        var mockCall = CreateAsyncUnaryCall(grpcResponse);
+
+        _mockGrpcClient
+            .Setup(x => x.RegisterAsync(It.IsAny<RegisterRequest>(), null, null, CancellationToken.None))
+            .Returns(mockCall);
+
+        await client.RegisterAsync();
+
+        Assert.Equal(expectedInstanceId, client.InstanceId);
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Information,
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains(messageContains)),
-                expectedException,
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Service registered!")),
+                null,
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
-            times);
+            Times.Once);
     }
 
     [Fact]
-    public void Constructor_UsesDefaults_WhenEnvVarsNotSet()
+    public async Task RegisterAsync_Handles_RpcException()
     {
         var client = CreateClient();
-        VerifyLog(_mockLogger, LogLevel.Warning, "SERVICE_PORT not found or invalid", Times.Once());
-    }
+        var rpcException = new RpcException(new Status(StatusCode.Unavailable, "Service down"));
 
-    [Fact]
-    public void Constructor_ReadsEnvVars_Correctly()
-    {
-        const string expectedServiceId = "my-comm-service";
-        const string expectedHost = "comm.example.com";
-        const string expectedPortStr = "8080";
-        Environment.SetEnvironmentVariable("SERVICE_ID", expectedServiceId);
-        Environment.SetEnvironmentVariable("HOSTNAME", expectedHost);
-        Environment.SetEnvironmentVariable("SERVICE_PORT", expectedPortStr);
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-
-        var client = CreateClient();
-
-        VerifyLog(_mockLogger, LogLevel.Warning, "SERVICE_PORT not found or invalid", Times.Never());
-        
-        VerifyLog(_mockLogger, LogLevel.Information, "Resolved hostname from HOSTNAME", Times.Once());
-    }
-
-
-    [Fact]
-    public async Task RegisterAsync_Skips_WhenDiscoveryUrlNotSet()
-    {
-        ClearEnvVars();
-        var client = CreateClient();
+        _mockGrpcClient
+            .Setup(x => x.RegisterAsync(It.IsAny<RegisterRequest>(), null, null, CancellationToken.None))
+            .Throws(rpcException);
 
         await client.RegisterAsync();
 
         Assert.Null(client.InstanceId);
-        VerifyLog(_mockLogger, LogLevel.Warning, "DISCOVERY_SERVICE_URL is not set", Times.Once());
+        _mockLogger.Verify(
+            x => x.Log(
+                LogLevel.Error,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("gRPC Error")),
+                It.IsAny<Exception>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task DeregisterAsync_Succeeds()
+    {
+        var client = CreateClient();
         
-        _mockHttpMessageHandler.Protected()
-            .Verify("SendAsync", Times.Never(),
-                ItExpr.IsAny<HttpRequestMessage>(),
-                ItExpr.IsAny<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task RegisterAsync_Succeeds_WhenApiCallIsSuccessful()
-    {
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        var client = CreateClient();
-        var expectedUri = new Uri($"{TestDiscoveryUrl}/api/discovery/register");
-
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(m =>
-                    m.Method == HttpMethod.Post &&
-                    m.RequestUri == expectedUri),
-                ItExpr.IsAny<CancellationToken>()
-            )
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK))
-            .Verifiable();
-
-        await client.RegisterAsync();
-
-        Assert.NotNull(client.InstanceId);
+        var registerResponse = new RegisterResponse { InstanceId = "inst-1", Status = "OK" };
+        _mockGrpcClient.Setup(x => x.RegisterAsync(It.IsAny<RegisterRequest>(), null, null, CancellationToken.None))
+            .Returns(CreateAsyncUnaryCall(registerResponse));
         
-        _mockHttpMessageHandler.Protected().Verify(
-            "SendAsync",
-            Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(m => m.Method == HttpMethod.Post && m.RequestUri == expectedUri),
-            ItExpr.IsAny<CancellationToken>());
-        VerifyLog(_mockLogger, LogLevel.Information, "Service registered with discovery", Times.Once());
-        VerifyLog(_mockLogger, LogLevel.Error, "Failed to register service", Times.Never());
-    }
-
-    [Fact]
-    public async Task RegisterAsync_UsesEnvVarsInPayload()
-    {
-        const string expectedServiceId = "payload-test-svc";
-        const string expectedHost = "payload.host.test";
-        const int expectedPort = 9999;
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        Environment.SetEnvironmentVariable("SERVICE_ID", expectedServiceId);
-        Environment.SetEnvironmentVariable("HOSTNAME", expectedHost);
-        Environment.SetEnvironmentVariable("SERVICE_PORT", expectedPort.ToString());
-
-        var client = CreateClient();
-        HttpRequestMessage? capturedRequest = null;
-
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(m =>
-                    m.Method == HttpMethod.Post &&
-                    m.RequestUri!.ToString().Contains("register")),
-                ItExpr.IsAny<CancellationToken>()
-            )
-            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequest = req)
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
-
-        await client.RegisterAsync();
-
-        Assert.NotNull(capturedRequest);
-        Assert.NotNull(capturedRequest.Content);
-
-        var jsonPayload = await capturedRequest.Content.ReadAsStringAsync();
-        using var jsonDoc = JsonDocument.Parse(jsonPayload);
-        var root = jsonDoc.RootElement;
-
-        Assert.True(root.TryGetProperty("serviceId", out var serviceIdElement));
-        Assert.Equal(expectedServiceId, serviceIdElement.GetString());
-
-        Assert.True(root.TryGetProperty("instanceId", out var instanceIdElement));
-        Assert.Equal(client.InstanceId, instanceIdElement.GetString());
-
-        Assert.True(root.TryGetProperty("host", out var hostElement));
-        Assert.Equal(expectedHost, hostElement.GetString());
-
-        Assert.True(root.TryGetProperty("port", out var portElement));
-        Assert.Equal(expectedPort, portElement.GetInt32());
-    }
-
-    [Fact]
-    public async Task RegisterAsync_UsesDefaultsInPayload_WhenEnvVarsNotSet()
-    {
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        ClearEnvVars();
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-
-        var client = CreateClient();
-        HttpRequestMessage? capturedRequest = null;
-
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(m => m.Method == HttpMethod.Post && m.RequestUri!.ToString().Contains("register")),
-                ItExpr.IsAny<CancellationToken>()
-            )
-            .Callback<HttpRequestMessage, CancellationToken>((req, _) => capturedRequest = req)
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
-
-        await client.RegisterAsync();
-
-        Assert.NotNull(capturedRequest);
-        Assert.NotNull(capturedRequest.Content);
-
-        var jsonPayload = await capturedRequest.Content.ReadAsStringAsync();
-        using var jsonDoc = JsonDocument.Parse(jsonPayload);
-        var root = jsonDoc.RootElement;
-
-        Assert.True(root.TryGetProperty("serviceId", out var serviceIdElement));
-        Assert.Equal(DefaultServiceId, serviceIdElement.GetString());
-        Assert.True(root.TryGetProperty("instanceId", out var instanceIdElement));
-        Assert.Equal(client.InstanceId, instanceIdElement.GetString());
-        
-        Assert.True(root.TryGetProperty("host", out var hostElement));
-        Assert.NotNull(hostElement.GetString());
-        Assert.False(string.IsNullOrEmpty(hostElement.GetString()));
-
-        Assert.True(root.TryGetProperty("port", out var portElement));
-        Assert.Equal(DefaultPort, portElement.GetInt32());
-    }
-
-
-    [Fact]
-    public async Task RegisterAsync_Fails_WhenApiCallFails()
-    {
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        var client = CreateClient();
-        const string errorBody = "Invalid registration data";
-
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(m => m.RequestUri!.ToString().Contains("register")),
-                ItExpr.IsAny<CancellationToken>()
-            )
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.BadRequest)
-            {
-                Content = new StringContent(errorBody)
-            });
-
-        await client.RegisterAsync();
-
-        Assert.Null(client.InstanceId);
-        VerifyLog(_mockLogger, LogLevel.Error, "Failed to register service", Times.Once());
-        VerifyLog(_mockLogger, LogLevel.Error, $"Body: {errorBody}", Times.Once());
-        VerifyLog(_mockLogger, LogLevel.Information, "Service registered", Times.Never());
-    }
-
-    [Fact]
-    public async Task RegisterAsync_Handles_ExceptionDuringApiCall()
-    {
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        var client = CreateClient();
-        var testException = new HttpRequestException("Simulated network error");
-
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(m => m.RequestUri!.ToString().Contains("register")),
-                ItExpr.IsAny<CancellationToken>()
-            )
-            .ThrowsAsync(testException);
-
-        await client.RegisterAsync();
-
-        Assert.Null(client.InstanceId);
-        VerifyLogException(_mockLogger, LogLevel.Error, "Error occurred during service registration", testException, Times.Once());
-    }
-
-    [Fact]
-    public async Task DeregisterAsync_Skips_WhenInstanceIdIsNull()
-    {
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        var client = CreateClient();
-
-        await client.DeregisterAsync();
-
-        _mockHttpMessageHandler.Protected()
-            .Verify("SendAsync", Times.Never(),
-                ItExpr.Is<HttpRequestMessage>(m => m.Method == HttpMethod.Delete),
-                ItExpr.IsAny<CancellationToken>());
-        VerifyLog(_mockLogger, LogLevel.Information, "Service deregistered", Times.Never());
-    }
-
-    [Fact]
-    public async Task DeregisterAsync_Skips_WhenDiscoveryUrlNotSet()
-    {
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        var clientRegistered = CreateClient();
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.IsAny<HttpRequestMessage>(), ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
-        await clientRegistered.RegisterAsync();
-        Assert.NotNull(clientRegistered.InstanceId);
-
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", null);
-        var clientToTest = CreateClient();
-
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        var clientNoInstanceId = CreateClient();
-
-        await clientNoInstanceId.DeregisterAsync();
-
-        _mockHttpMessageHandler.Protected()
-            .Verify("SendAsync", Times.Never(),
-                ItExpr.Is<HttpRequestMessage>(m => m.Method == HttpMethod.Delete),
-                ItExpr.IsAny<CancellationToken>());
-        VerifyLog(_mockLogger, LogLevel.Information, "Service deregistered", Times.Never());
-
-         Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", null);
-         var clientNoUrl = CreateClient();
-
-         _mockHttpMessageHandler.Invocations.Clear();
-         _mockLogger.Invocations.Clear();
-
-         await clientNoUrl.DeregisterAsync();
-
-        _mockHttpMessageHandler.Protected()
-            .Verify("SendAsync", Times.Never(),
-                ItExpr.Is<HttpRequestMessage>(m => m.Method == HttpMethod.Delete),
-                ItExpr.IsAny<CancellationToken>());
-         VerifyLog(_mockLogger, LogLevel.Information, "Service deregistered", Times.Never());
-
-    }
-
-
-    [Fact]
-    public async Task DeregisterAsync_Succeeds_WhenApiCallIsSuccessful()
-    {
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        var client = CreateClient();
-
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(m => m.Method == HttpMethod.Post && m.RequestUri!.ToString().Contains("register")),
-                ItExpr.IsAny<CancellationToken>()
-            )
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
-        await client.RegisterAsync();
-        var instanceId = client.InstanceId;
-        Assert.NotNull(instanceId);
-        var expectedUri = new Uri($"{TestDiscoveryUrl}/api/discovery/deregister/{instanceId}");
-
-
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(m =>
-                    m.Method == HttpMethod.Delete &&
-                    m.RequestUri == expectedUri),
-                ItExpr.IsAny<CancellationToken>()
-            )
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK))
-            .Verifiable();
-
-        await client.DeregisterAsync();
-
-         _mockHttpMessageHandler.Protected().Verify(
-            "SendAsync",
-            Times.Once(),
-            ItExpr.Is<HttpRequestMessage>(m => m.Method == HttpMethod.Delete && m.RequestUri == expectedUri),
-            ItExpr.IsAny<CancellationToken>());
-        VerifyLog(_mockLogger, LogLevel.Information, "Service deregistered from discovery", Times.Once());
-        VerifyLog(_mockLogger, LogLevel.Error, "Failed to deregister", Times.Never());
-    }
-
-    [Fact]
-    public async Task DeregisterAsync_LogsError_WhenApiCallFails()
-    {
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        var client = CreateClient();
-
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.Is<HttpRequestMessage>(m => m.RequestUri!.ToString().Contains("register")), ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
-        await client.RegisterAsync();
-        var instanceId = client.InstanceId;
-        Assert.NotNull(instanceId);
-
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(m => m.RequestUri!.ToString().Contains($"deregister/{instanceId}")),
-                ItExpr.IsAny<CancellationToken>()
-            )
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.InternalServerError));
-
-        await client.DeregisterAsync();
-
-        VerifyLog(_mockLogger, LogLevel.Error, "Failed to deregister service", Times.Once());
-        VerifyLog(_mockLogger, LogLevel.Error, "Status code: InternalServerError", Times.Once());
-        VerifyLog(_mockLogger, LogLevel.Information, "Service deregistered", Times.Never());
-    }
-
-    [Fact]
-    public async Task DeregisterAsync_Handles_ExceptionDuringApiCall()
-    {
-        Environment.SetEnvironmentVariable("DISCOVERY_SERVICE_URL", TestDiscoveryUrl);
-        var client = CreateClient();
-        var testException = new HttpRequestException("Deregister network error");
-
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>("SendAsync", ItExpr.Is<HttpRequestMessage>(m => m.RequestUri!.ToString().Contains("register")), ItExpr.IsAny<CancellationToken>())
-            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.OK));
         await client.RegisterAsync();
         Assert.NotNull(client.InstanceId);
 
-        _mockHttpMessageHandler.Protected()
-            .Setup<Task<HttpResponseMessage>>(
-                "SendAsync",
-                ItExpr.Is<HttpRequestMessage>(m => m.RequestUri!.ToString().Contains("deregister")),
-                ItExpr.IsAny<CancellationToken>()
-            )
-            .ThrowsAsync(testException);
+        var deregisterResponse = new DeregisterResponse { Status = "Deregistered" };
+        _mockGrpcClient.Setup(x => x.DeregisterAsync(It.IsAny<DeregisterRequest>(), null, null, CancellationToken.None))
+            .Returns(CreateAsyncUnaryCall(deregisterResponse));
 
         await client.DeregisterAsync();
 
-        VerifyLogException(_mockLogger, LogLevel.Error, "Error occurred during service deregistration", testException, Times.Once());
+        _mockGrpcClient.Verify(x => x.DeregisterAsync(It.Is<DeregisterRequest>(r => r.InstanceId == "inst-1"), null, null, CancellationToken.None), Times.Once);
+    }
+
+    private static AsyncUnaryCall<T> CreateAsyncUnaryCall<T>(T response)
+    {
+        return new AsyncUnaryCall<T>(
+            Task.FromResult(response),
+            Task.FromResult(new Metadata()),
+            () => Status.DefaultSuccess,
+            () => [],
+            () => { });
     }
 }
