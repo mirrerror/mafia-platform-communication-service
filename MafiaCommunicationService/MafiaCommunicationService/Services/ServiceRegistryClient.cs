@@ -14,6 +14,7 @@ public class ServiceRegistryClient
     private readonly int _restPort;
     private readonly int _rpcPort;
     private readonly string _topicName;
+    private readonly string _subscribedTopics;
 
     public string? InstanceId { get; private set; }
 
@@ -26,7 +27,8 @@ public class ServiceRegistryClient
         _grpcClient = serviceProvider.GetService<RegistrationService.RegistrationServiceClient>();
 
         _serviceId = Environment.GetEnvironmentVariable("SERVICE_ID") ?? "mafia-communication-service";
-        _topicName = Environment.GetEnvironmentVariable("SERVICE_TOPIC") ?? "chat-events";
+        _topicName = Environment.GetEnvironmentVariable("SERVICE_TOPIC") ?? "chat-topic";
+        _subscribedTopics = Environment.GetEnvironmentVariable("SUBSCRIBED_TOPICS") ?? "";
 
         _serviceHost = "localhost";
         var hostnameFromEnv = Environment.GetEnvironmentVariable("HOSTNAME");
@@ -70,7 +72,14 @@ public class ServiceRegistryClient
                 TopicName = _topicName
             };
 
-            _logger.LogInformation("Sending gRPC Registration...");
+            request.Metadata.Add("language", "csharp");
+            
+            if (!string.IsNullOrEmpty(_subscribedTopics))
+            {
+                request.Metadata.Add("subscribedTopics", _subscribedTopics);
+            }
+
+            _logger.LogInformation("Sending gRPC Registration with metadata (Topics: {Topics})...", _subscribedTopics);
             var response = await _grpcClient.RegisterAsync(request);
 
             InstanceId = response.InstanceId;
