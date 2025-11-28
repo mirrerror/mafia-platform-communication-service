@@ -37,6 +37,7 @@ public class ServiceRegistryClientTests : IDisposable
         Environment.SetEnvironmentVariable("HOSTNAME", null);
         Environment.SetEnvironmentVariable("SERVICE_PORT", null);
         Environment.SetEnvironmentVariable("RPC_PORT", null);
+        Environment.SetEnvironmentVariable("SUBSCRIBED_TOPICS", null);
     }
 
     private ServiceRegistryClient CreateClient()
@@ -88,6 +89,7 @@ public class ServiceRegistryClientTests : IDisposable
         await client.RegisterAsync();
 
         Assert.Equal(expectedInstanceId, client.InstanceId);
+        
         _mockLogger.Verify(
             x => x.Log(
                 LogLevel.Information,
@@ -96,6 +98,45 @@ public class ServiceRegistryClientTests : IDisposable
                 null,
                 It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.Once);
+
+        _mockGrpcClient.Verify(x => x.RegisterAsync(
+            It.Is<RegisterRequest>(r => 
+                r.Metadata.ContainsKey("language") && 
+                r.Metadata["language"] == "csharp" &&
+                !r.Metadata.ContainsKey("subscribedTopics")
+            ), 
+            null, null, CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_IncludesSubscribedTopics_WhenEnvVarIsSet()
+    {
+        Environment.SetEnvironmentVariable("SUBSCRIBED_TOPICS", "chat-events");
+        var client = CreateClient();
+
+        var grpcResponse = new RegisterResponse
+        {
+            InstanceId = "test-instance-with-topics",
+            Status = "OK",
+            ServiceId = "test-service"
+        };
+
+        _mockGrpcClient
+            .Setup(x => x.RegisterAsync(It.IsAny<RegisterRequest>(), null, null, CancellationToken.None))
+            .Returns(CreateAsyncUnaryCall(grpcResponse));
+
+        await client.RegisterAsync();
+
+        Assert.Equal("test-instance-with-topics", client.InstanceId);
+
+        _mockGrpcClient.Verify(x => x.RegisterAsync(
+            It.Is<RegisterRequest>(r => 
+                r.Metadata.ContainsKey("language") && 
+                r.Metadata["language"] == "csharp" &&
+                r.Metadata.ContainsKey("subscribedTopics") &&
+                r.Metadata["subscribedTopics"] == "chat-events"
+            ), 
+            null, null, CancellationToken.None), Times.Once);
     }
 
     [Fact]
