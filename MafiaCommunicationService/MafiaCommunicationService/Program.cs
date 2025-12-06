@@ -104,8 +104,15 @@ builder.Services.AddControllers()
     });
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
 builder.Services.AddDbContext<ChatDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseNpgsql(connectionString, npgsqlOptions => 
+    {
+        npgsqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5, 
+            maxRetryDelay: TimeSpan.FromSeconds(2), 
+            errorCodesToAdd: null);
+    }));
 
 builder.Services.AddScoped<IChatService, PostgresChatService>();
 
